@@ -1,5 +1,7 @@
 // pages/home_page.dart
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../../models/service_category.dart';
 
 class HomePage extends StatefulWidget {
@@ -13,6 +15,8 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController _issueController = TextEditingController();
   bool _showResults = false;
   String _suggestedCategory = '';
+  String _quickFix = '';
+  List<dynamic> _availableWorkers = [];
   bool _loading = false;
 
   final List<ServiceCategory> _categories = [
@@ -26,46 +30,63 @@ class _HomePageState extends State<HomePage> {
     ServiceCategory('More', Icons.more_horiz, const Color(0xFF78909C)),
   ];
 
+  // ---------------- BACKEND CALL ----------------
   Future<void> _classifyIssue(String description) async {
     setState(() {
       _loading = true;
+      _showResults = false;
     });
 
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      // Send POST request to FastAPI backend
+      final response = await http.post(
+        Uri.parse("http://127.0.0.1:8000/analyze"),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'problem': description}),
+      );
 
-    final keywords = {
-      'Plumber': ['leak', 'pipe', 'tap', 'faucet', 'drain', 'water', 'sink', 'toilet', 'bathroom'],
-      'Electric': ['light', 'socket', 'power', 'electrical', 'wire', 'switch', 'circuit', 'breaker'],
-      'Wood': ['door', 'cabinet', 'furniture', 'wood', 'carpenter', 'shelf'],
-      'Clean': ['clean', 'dirt', 'mess', 'stain', 'polish'],
-      'HVAC': ['ac', 'heating', 'cooling', 'temperature', 'hvac', 'air conditioning'],
-      'Paint': ['paint', 'wall', 'color', 'repaint'],
-      'Water': ['water heater', 'geyser', 'hot water', 'boiler']
-    };
+      // Debug prints
+      print("Sending to backend: $description");
+      print("Response: ${response.body}");
 
-    String category = 'General';
-    final lowerDesc = description.toLowerCase();
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
 
-    for (var entry in keywords.entries) {
-      if (entry.value.any((word) => lowerDesc.contains(word))) {
-        category = entry.key;
-        break;
+        setState(() {
+          _suggestedCategory = data['detected_category'] ?? 'General';
+          _quickFix = data['quick_fix'] ?? '';
+          _availableWorkers = data['available_workers'] ?? [];
+          _showResults = true;
+          _loading = false;
+        });
+      } else {
+        setState(() {
+          _suggestedCategory = 'Error: ${response.statusCode}';
+          _quickFix = '';
+          _availableWorkers = [];
+          _showResults = true;
+          _loading = false;
+        });
       }
+    } catch (e) {
+      setState(() {
+        _suggestedCategory = 'Error: $e';
+        _quickFix = '';
+        _availableWorkers = [];
+        _showResults = true;
+        _loading = false;
+      });
     }
-
-    setState(() {
-      _suggestedCategory = category;
-      _showResults = true;
-      _loading = false;
-    });
   }
 
   void _handleFindHelp() {
+    print("Button pressed with text: ${_issueController.text}");
     if (_issueController.text.trim().isNotEmpty) {
       _classifyIssue(_issueController.text);
     }
   }
 
+  // ------------------- UI -------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -116,7 +137,8 @@ class _HomePageState extends State<HomePage> {
                           ),
                           borderRadius: BorderRadius.circular(24),
                         ),
-                        child: const Icon(Icons.person, color: Colors.white, size: 28),
+                        child: const Icon(Icons.person,
+                            color: Colors.white, size: 28),
                       ),
                       Positioned(
                         bottom: 0,
@@ -155,7 +177,8 @@ class _HomePageState extends State<HomePage> {
                             ),
                           ),
                           SizedBox(width: 4),
-                          Icon(Icons.location_on, color: Color(0xFF2196F3), size: 18),
+                          Icon(Icons.location_on,
+                              color: Color(0xFF2196F3), size: 18),
                         ],
                       ),
                     ],
@@ -196,10 +219,14 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(height: 20),
           RichText(
             text: const TextSpan(
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black),
+              style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black),
               children: [
                 TextSpan(text: 'Good evening, '),
-                TextSpan(text: 'Alex', style: TextStyle(color: Color(0xFF2196F3))),
+                TextSpan(
+                    text: 'Alex', style: TextStyle(color: Color(0xFF2196F3))),
                 TextSpan(text: '.'),
               ],
             ),
@@ -246,7 +273,7 @@ class _HomePageState extends State<HomePage> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _loading ? null : _handleFindHelp,
+              onPressed: _handleFindHelp,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF2196F3),
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -293,36 +320,34 @@ class _HomePageState extends State<HomePage> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Showing verified ${_suggestedCategory.toLowerCase()} professionals nearby',
+                    'Quick Fix: $_quickFix',
                     style: const TextStyle(
                       color: Color(0xFF388E3C),
                       fontSize: 12,
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  if (_availableWorkers.isNotEmpty)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Available Workers:',
+                          style: TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        ..._availableWorkers.map((w) => Text(
+                              '- $w',
+                              style: const TextStyle(fontSize: 12),
+                            )),
+                      ],
+                    ),
                 ],
               ),
             ),
           ],
           const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 20,
-                height: 20,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8F5E9),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.check, color: Color(0xFF4CAF50), size: 14),
-              ),
-              const SizedBox(width: 8),
-              const Text(
-                'Verified Pros Only • AI Matched • Insured',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -354,115 +379,11 @@ class _HomePageState extends State<HomePage> {
               color: Colors.grey[300],
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Stack(
-              children: [
-                Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
-                      Icon(Icons.location_on, size: 48, color: Colors.grey),
-                      SizedBox(height: 8),
-                      Text(
-                        'San Francisco',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Positioned(
-                  bottom: 16,
-                  left: 16,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Stack(
-                          children: [
-                            Container(
-                              width: 32,
-                              height: 32,
-                              decoration: BoxDecoration(
-                                color: Colors.blue,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: Colors.white, width: 2),
-                              ),
-                              child: const Center(
-                                child: Text('P', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                              ),
-                            ),
-                            Positioned(
-                              left: 20,
-                              child: Container(
-                                width: 32,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: Colors.green,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: Colors.white, width: 2),
-                                ),
-                                child: const Center(
-                                  child: Text('E', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              left: 40,
-                              child: Container(
-                                width: 32,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: Colors.orange,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: Colors.white, width: 2),
-                                ),
-                                child: const Center(
-                                  child: Text('+12', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10)),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 52),
-                        const Text(
-                          'Pros online nearby',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Text(
-                            'Live',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+            child: const Center(
+              child: Text(
+                'Map Placeholder',
+                style: TextStyle(color: Colors.grey),
+              ),
             ),
           ),
         ],
