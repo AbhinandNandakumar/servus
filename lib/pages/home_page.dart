@@ -5,7 +5,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import '../../models/service_category.dart';
-import 'search_results_page.dart'; // Add this import
+import 'search_results_page.dart';
+import 'booking_history_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -175,25 +176,24 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildHeader(),
-                    _buildSearchSection(),
-                    _buildNearbyActivity(),
-                    _buildQuickAccess(),
-                    const SizedBox(height: 80),
-                  ],
-                ),
+      backgroundColor: const Color(0xFFF0F4F8),
+      body: Column(
+        children: [
+          _buildHeader(),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildSearchSection(),
+                  _buildNearbyActivity(),
+                  _buildQuickAccess(),
+                  const SizedBox(height: 80),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
       bottomNavigationBar: _buildBottomNav(),
     );
@@ -201,145 +201,167 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildHeader() {
     return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1565C0), Color(0xFF1E88E5), Color(0xFF42A5F5)],
+        ),
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(30),
+          bottomRight: Radius.circular(30),
+        ),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Stack(
+                  Row(
                     children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF64B5F6), Color(0xFF2196F3)],
+                      Stack(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withAlpha(51),
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                            child: const Icon(Icons.person,
+                                color: Colors.white, size: 28),
                           ),
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        child: const Icon(Icons.person,
-                            color: Colors.white, size: 28),
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          width: 14,
-                          height: 14,
-                          decoration: BoxDecoration(
-                            color: Colors.green,
-                            borderRadius: BorderRadius.circular(7),
-                            border: Border.all(color: Colors.white, width: 2),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'LOCATION',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.grey,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                      Row(
-                        children: const [
-                          Text(
-                            'San Francisco, CA',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: Container(
+                              width: 14,
+                              height: 14,
+                              decoration: BoxDecoration(
+                                color: Colors.greenAccent,
+                                borderRadius: BorderRadius.circular(7),
+                                border: Border.all(color: Colors.white, width: 2),
+                              ),
                             ),
                           ),
-                          SizedBox(width: 4),
-                          Icon(Icons.location_on,
-                              color: Color(0xFF2196F3), size: 18),
+                        ],
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'LOCATION',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.white.withAlpha(179),
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          Row(
+                            children: const [
+                              Text(
+                                'San Francisco, CA',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              SizedBox(width: 4),
+                              Icon(Icons.location_on,
+                                  color: Colors.white, size: 18),
+                            ],
+                          ),
                         ],
                       ),
                     ],
                   ),
-                ],
-              ),
-              Stack(
-                children: [
-                  const Icon(Icons.notifications, size: 28),
-                  Positioned(
-                    top: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      constraints: const BoxConstraints(
-                        minWidth: 18,
-                        minHeight: 18,
-                      ),
-                      child: const Text(
-                        '3',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(51),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Stack(
+                      children: [
+                        const Icon(Icons.notifications, size: 24, color: Colors.white),
+                        Positioned(
+                          top: -2,
+                          right: -2,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.redAccent,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 16,
+                              minHeight: 16,
+                            ),
+                            child: const Text(
+                              '3',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
                         ),
-                        textAlign: TextAlign.center,
-                      ),
+                      ],
                     ),
                   ),
                 ],
               ),
+              const SizedBox(height: 24),
+              RichText(
+                text: const TextSpan(
+                  style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white),
+                  children: [
+                    TextSpan(text: 'Good evening, '),
+                    TextSpan(
+                        text: 'Alex', style: TextStyle(color: Color(0xFFFFD54F))),
+                    TextSpan(text: '.'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Describe your issue, and our AI will find the best pro nearby.',
+                style: TextStyle(fontSize: 14, color: Colors.white.withAlpha(204)),
+              ),
             ],
           ),
-          const SizedBox(height: 20),
-          RichText(
-            text: const TextSpan(
-              style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black),
-              children: [
-                TextSpan(text: 'Good evening, '),
-                TextSpan(
-                    text: 'Alex', style: TextStyle(color: Color(0xFF2196F3))),
-                TextSpan(text: '.'),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Describe your issue, and our AI will find the best pro nearby.',
-            style: TextStyle(fontSize: 14, color: Colors.grey),
-          ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildSearchSection() {
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
       child: Column(
         children: [
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFF2196F3).withAlpha(77), width: 1.5),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
+                  color: const Color(0xFF2196F3).withAlpha(26),
+                  blurRadius: 15,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
@@ -508,15 +530,80 @@ class _HomePageState extends State<HomePage> {
           Container(
             height: 160,
             decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Center(
-              child: Text(
-                'Map Placeholder',
-                style: TextStyle(color: Colors.grey),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFF1E88E5).withAlpha(26),
+                  const Color(0xFF42A5F5).withAlpha(51),
+                ],
               ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFF2196F3).withAlpha(51)),
             ),
+            child: Stack(
+              children: [
+                // Decorative circles to simulate map markers
+                Positioned(
+                  top: 30,
+                  left: 40,
+                  child: _buildMapMarker(Colors.blue),
+                ),
+                Positioned(
+                  top: 60,
+                  right: 60,
+                  child: _buildMapMarker(Colors.green),
+                ),
+                Positioned(
+                  bottom: 40,
+                  left: 80,
+                  child: _buildMapMarker(Colors.orange),
+                ),
+                Positioned(
+                  bottom: 50,
+                  right: 100,
+                  child: _buildMapMarker(Colors.red),
+                ),
+                Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.map_outlined,
+                        size: 40,
+                        color: const Color(0xFF2196F3).withAlpha(128),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '4 pros nearby',
+                        style: TextStyle(
+                          color: const Color(0xFF1565C0),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMapMarker(Color color) {
+    return Container(
+      width: 12,
+      height: 12,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: color.withAlpha(128),
+            blurRadius: 8,
+            spreadRadius: 2,
           ),
         ],
       ),
@@ -606,10 +693,17 @@ class _HomePageState extends State<HomePage> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildNavItem(Icons.home, 'Home', true),
-              _buildNavItem(Icons.work_outline, 'My Jobs', false),
-              _buildNavItem(Icons.chat_bubble_outline, 'Messages', false),
-              _buildNavItem(Icons.person_outline, 'Profile', false),
+              _buildNavItem(Icons.home, 'Home', true, null),
+              _buildNavItem(Icons.calendar_today_outlined, 'Bookings', false, () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const BookingHistoryPage(),
+                  ),
+                );
+              }),
+              _buildNavItem(Icons.chat_bubble_outline, 'Messages', false, null),
+              _buildNavItem(Icons.person_outline, 'Profile', false, null),
             ],
           ),
         ),
@@ -617,25 +711,28 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildNavItem(IconData icon, String label, bool isActive) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          icon,
-          color: isActive ? const Color(0xFF2196F3) : Colors.grey,
-          size: 28,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
+  Widget _buildNavItem(IconData icon, String label, bool isActive, VoidCallback? onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
             color: isActive ? const Color(0xFF2196F3) : Colors.grey,
-            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+            size: 28,
           ),
-        ),
-      ],
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: isActive ? const Color(0xFF2196F3) : Colors.grey,
+              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

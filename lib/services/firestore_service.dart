@@ -111,6 +111,44 @@ class FirestoreService {
     }
   }
 
+  // Get all bookings (for user booking history)
+  Future<List<Map<String, dynamic>>> getAllBookings() async {
+    try {
+      final snapshot = await _db
+          .collection('bookings')
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      return snapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return data;
+      }).toList();
+    } catch (e) {
+      print('Error fetching all bookings: $e');
+      return [];
+    }
+  }
+
+  // Update booking status
+  Future<bool> updateBookingStatus(String bookingId, String status) async {
+    try {
+      await _db.collection('bookings').doc(bookingId).update({
+        'status': status,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      return true;
+    } catch (e) {
+      print('Error updating booking status: $e');
+      return false;
+    }
+  }
+
+  // Cancel a booking
+  Future<bool> cancelBooking(String bookingId) async {
+    return updateBookingStatus(bookingId, 'cancelled');
+  }
+
   // Seed initial workers data (run once to populate Firestore)
   Future<void> seedWorkersData() async {
     final workersData = [

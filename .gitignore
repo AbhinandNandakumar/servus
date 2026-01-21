@@ -51,3 +51,4 @@ Model/serviceAccountKey.json
 serviceAccountKey.json
 *.env
 .env
+*.stackdump
