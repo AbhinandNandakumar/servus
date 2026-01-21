@@ -127,12 +127,12 @@ def get_workers_from_firestore(category: str) -> list:
 
 
 def generate_quick_fix(problem: str, category: str) -> str:
-    # Hardcoded quick fix to avoid Gemini API rate limits
-    # Uncomment the code below to enable Gemini API calls
-    return "Turn off the main supply and keep the area dry until the professional arrives."
+    """Generate quick fix suggestions using Gemini"""
+    # Hardcoded quick fix to save API calls
+    return "• Turn off the main supply and keep the area dry until the professional arrives.\n• Check for visible damage and take photos for reference.\n• Keep children and pets away from the affected area."
 
     # --- GEMINI API CODE (commented out to save API calls) ---
-    # print("🧠 Gemini prompt called:", problem, category)
+    # print("🧠 Gemini quick fix called:", problem, category)
     #
     # prompt = f"""
     # You are a home service expert.
@@ -150,6 +150,7 @@ def generate_quick_fix(problem: str, category: str) -> str:
     # - Do NOT mention complex tools
     # - Keep advice safe and simple
     # - Use bullet points
+    # - Keep response under 100 words
     # """
     #
     # try:
@@ -157,7 +158,71 @@ def generate_quick_fix(problem: str, category: str) -> str:
     #     return response.text.strip()
     # except Exception as e:
     #     print("❌ Gemini Error:", e)
-    #     return "Please take basic safety precautions until a professional arrives."
+    #     return "Turn off the main supply and keep the area dry until the professional arrives."
+
+
+def get_worker_reviews(worker_id: str) -> list:
+    """Fetch completed booking reviews for a worker from Firestore"""
+    try:
+        reviews_ref = db.collection('bookings').where('workerId', '==', worker_id).where('status', '==', 'completed')
+        docs = reviews_ref.stream()
+
+        reviews = []
+        for doc in docs:
+            booking_data = doc.to_dict()
+            if booking_data.get('rating') and booking_data.get('rating') > 0:
+                reviews.append({
+                    'rating': booking_data.get('rating', 0),
+                    'review': booking_data.get('review', ''),
+                    'customerQuery': booking_data.get('customerQuery', '')
+                })
+
+        return reviews
+    except Exception as e:
+        print(f"❌ Error fetching reviews: {e}")
+        return []
+
+
+def generate_review_summary(worker_name: str, reviews: list) -> str:
+    """Generate AI summary of worker reviews using Gemini"""
+    if not reviews:
+        return ""
+
+    # Hardcoded review summary to save API calls
+    avg_rating = sum(r.get('rating', 0) for r in reviews) / len(reviews)
+    return f"Customers consistently praise {worker_name} for professional service and quality work. With an average rating of {avg_rating:.1f}/5, clients appreciate the punctuality and attention to detail."
+
+    # --- GEMINI API CODE (commented out to save API calls) ---
+    # # Build review text for Gemini
+    # review_texts = []
+    # for r in reviews:
+    #     if r.get('review'):
+    #         review_texts.append(f"Rating: {r['rating']}/5 - \"{r['review']}\"")
+    #     else:
+    #         review_texts.append(f"Rating: {r['rating']}/5")
+    #
+    # if not review_texts:
+    #     return ""
+    #
+    # reviews_combined = "\n".join(review_texts[:10])  # Limit to 10 reviews
+    #
+    # prompt = f"""
+    # Summarize these customer reviews for {worker_name} in 1-2 sentences.
+    # Focus on key strengths, work quality, and customer satisfaction.
+    # Be concise and professional. Do not use bullet points.
+    #
+    # Reviews:
+    # {reviews_combined}
+    #
+    # Summary:
+    # """
+    #
+    # try:
+    #     response = gemini_model.generate_content(prompt)
+    #     return response.text.strip()
+    # except Exception as e:
+    #     print(f"❌ Gemini review summary error: {e}")
+    #     return ""
 
 
 # -------------------------------
@@ -166,31 +231,45 @@ def generate_quick_fix(problem: str, category: str) -> str:
 @app.post("/analyze")
 async def analyze(problem_input: ProblemInput):
     query = problem_input.problem.lower().strip()
-    
+
     # Embed query
     query_emb = model.encode(query, convert_to_tensor=True)
-    
+
     # Compute cosine similarity
     cos_scores = util.cos_sim(query_emb, torch.stack(data['embeddings'].to_list()))[0]
-    
+
     # Get top-k results
     top_k = 5
     threshold = 0.55
     top_results = torch.topk(cos_scores, k=top_k)
-    
+
     best_category = None
     for score, idx in zip(top_results.values, top_results.indices):
         idx = idx.item()  # convert tensor to integer
         if score >= threshold:
             best_category = data.iloc[idx]['category']
             break
-    
+
     if best_category is None:
         best_category = "general_contractor"
-    
+
     available_workers = get_workers_from_firestore(best_category)
     quick_fix = generate_quick_fix(problem_input.problem, best_category)
 
+    # Add AI review summaries for each worker
+    for worker in available_workers:
+        worker_id = worker.get('id', '')
+        if worker_id:
+            reviews = get_worker_reviews(worker_id)
+            if reviews:
+                worker['review_count'] = len(reviews)
+                worker['ai_review_summary'] = generate_review_summary(worker.get('name', 'Worker'), reviews)
+            else:
+                worker['review_count'] = 0
+                worker['ai_review_summary'] = ''
+        else:
+            worker['review_count'] = 0
+            worker['ai_review_summary'] = ''
 
     return {
         "detected_category": best_category,

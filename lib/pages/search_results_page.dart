@@ -374,7 +374,7 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
             ),
             const SizedBox(height: 12),
 
-            // AI Review Summary - Using Quick Fix from backend
+            // AI Suggested Fix
             if (widget.quickFix.isNotEmpty)
               Container(
                 padding: const EdgeInsets.all(12),
@@ -412,6 +412,71 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
                   ],
                 ),
               ),
+
+            // AI Review Summary from Gemini
+            if (worker['ai_review_summary'] != null &&
+                worker['ai_review_summary'].toString().isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF8E1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color(0xFFFFE082),
+                    width: 1,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.rate_review,
+                            color: Color(0xFFF57C00), size: 16),
+                        const SizedBox(width: 6),
+                        const Text(
+                          'AI REVIEW SUMMARY',
+                          style: TextStyle(
+                            color: Color(0xFFF57C00),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const Spacer(),
+                        if (worker['review_count'] != null &&
+                            worker['review_count'] > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF57C00).withAlpha(25),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '${worker['review_count']} reviews',
+                              style: const TextStyle(
+                                color: Color(0xFFF57C00),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      worker['ai_review_summary'].toString(),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Colors.black87,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
 
             // Action buttons
