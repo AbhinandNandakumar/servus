@@ -45,3 +45,9 @@ app.*.map.json
 /.dart_tool/
 /.flutter-plugins
 /.flutter-plugins-dependencies
+
+# Secrets
+Model/serviceAccountKey.json
+serviceAccountKey.json
+*.env
+.env

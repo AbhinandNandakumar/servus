@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
 import '../../models/service_category.dart';
 import 'search_results_page.dart'; // Add this import
 
@@ -15,6 +17,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final TextEditingController _issueController = TextEditingController();
   bool _loading = false;
+  Uint8List? _selectedImageBytes;
+  String? _selectedImageName;
 
   final List<ServiceCategory> _categories = [
     ServiceCategory('Plumber', Icons.build, const Color(0xFF2196F3)),
@@ -100,16 +104,71 @@ class _HomePageState extends State<HomePage> {
 
   void _handleFindHelp() {
     print("Button pressed with text: ${_issueController.text}");
-    if (_issueController.text.trim().isNotEmpty) {
+    if (_issueController.text.trim().isNotEmpty || _selectedImageBytes != null) {
       _classifyIssue(_issueController.text);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please describe your issue first'),
+          content: Text('Please describe your issue or upload an image'),
           duration: Duration(seconds: 2),
         ),
       );
     }
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      // Use withData: true to get bytes (works on web and desktop)
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        dialogTitle: 'Select an image',
+        type: FileType.any,
+        withData: true,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        final name = file.name;
+        final extension = name.split('.').last.toLowerCase();
+
+        // Check if it's an image file
+        final imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
+        if (!imageExtensions.contains(extension)) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please select an image file (jpg, png, gif, etc.)'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+          return;
+        }
+
+        if (file.bytes != null) {
+          setState(() {
+            _selectedImageBytes = file.bytes;
+            _selectedImageName = name;
+          });
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error picking image: $e'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  void _removeImage() {
+    setState(() {
+      _selectedImageBytes = null;
+      _selectedImageName = null;
+      if (_issueController.text == "Issue shown in the uploaded image") {
+        _issueController.clear();
+      }
+    });
   }
 
   // ------------------- UI -------------------
@@ -284,16 +343,102 @@ class _HomePageState extends State<HomePage> {
                 ),
               ],
             ),
-            child: TextField(
-              controller: _issueController,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                hintText:
-                    'e.g., The kitchen sink is leaking under the cabinet...',
-                hintStyle: TextStyle(color: Colors.grey),
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.all(16),
-              ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Text field
+                Expanded(
+                  child: TextField(
+                    controller: _issueController,
+                    maxLines: 3,
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => _handleFindHelp(),
+                    decoration: const InputDecoration(
+                      hintText:
+                          'e.g., The kitchen sink is leaking under the cabinet...',
+                      hintStyle: TextStyle(color: Colors.grey),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.all(16),
+                    ),
+                  ),
+                ),
+                // Image upload button
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: GestureDetector(
+                    onTap: _pickImage,
+                    child: Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: _selectedImageBytes != null
+                            ? const Color(0xFF2196F3)
+                            : const Color(0xFFF5F5F5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _selectedImageBytes != null
+                              ? const Color(0xFF2196F3)
+                              : Colors.grey[300]!,
+                        ),
+                      ),
+                      child: _selectedImageBytes != null
+                          ? Stack(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(11),
+                                  child: Image.memory(
+                                    _selectedImageBytes!,
+                                    width: 56,
+                                    height: 56,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                                Positioned(
+                                  top: -4,
+                                  right: -4,
+                                  child: GestureDetector(
+                                    onTap: _removeImage,
+                                    child: Container(
+                                      width: 20,
+                                      height: 20,
+                                      decoration: BoxDecoration(
+                                        color: Colors.red,
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(
+                                            color: Colors.white, width: 2),
+                                      ),
+                                      child: const Icon(
+                                        Icons.close,
+                                        color: Colors.white,
+                                        size: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.camera_alt_outlined,
+                                  color: Colors.grey[600],
+                                  size: 24,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Photo',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 16),

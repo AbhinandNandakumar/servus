@@ -1,5 +1,6 @@
 // pages/search_results_page.dart
 import 'package:flutter/material.dart';
+import 'booking_page.dart';
 
 class SearchResultsPage extends StatefulWidget {
   final String searchQuery;
@@ -483,30 +484,14 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
   }
 
   void _bookWorker(dynamic worker) {
-    // TODO: Navigate to booking page
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Book Worker'),
-        content: Text('Ready to book ${worker['name'] ?? 'this worker'}?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Booking ${worker['name'] ?? 'worker'}...'),
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-            },
-            child: const Text('Confirm'),
-          ),
-        ],
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BookingPage(
+          worker: Map<String, dynamic>.from(worker),
+          searchQuery: widget.searchQuery,
+          detectedCategory: widget.detectedCategory,
+        ),
       ),
     );
   }
