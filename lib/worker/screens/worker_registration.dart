@@ -8,12 +8,14 @@ class WorkerRegistrationScreen extends StatefulWidget {
   const WorkerRegistrationScreen({Key? key}) : super(key: key);
 
   @override
-  State<WorkerRegistrationScreen> createState() => _WorkerRegistrationScreenState();
+  State<WorkerRegistrationScreen> createState() =>
+      _WorkerRegistrationScreenState();
 }
 
 class _WorkerRegistrationScreenState extends State<WorkerRegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  int _currentStep = 0;
 
   // Form controllers
   final _nameController = TextEditingController();
@@ -49,6 +51,27 @@ class _WorkerRegistrationScreenState extends State<WorkerRegistrationScreen> {
     super.dispose();
   }
 
+  void _showSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle_outline,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: isError ? const Color(0xFFE53935) : const Color(0xFF43A047),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
   Future<void> _registerWorker() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -72,14 +95,7 @@ class _WorkerRegistrationScreenState extends State<WorkerRegistrationScreen> {
 
       if (data['success'] == true) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Registration successful!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-
-          // Navigate to dashboard
+          _showSnackBar('Registration successful! Welcome aboard.');
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
@@ -89,22 +105,12 @@ class _WorkerRegistrationScreenState extends State<WorkerRegistrationScreen> {
         }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(data['error'] ?? 'Registration failed'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          _showSnackBar(data['error'] ?? 'Registration failed', isError: true);
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        _showSnackBar('Connection error. Please try again.', isError: true);
       }
     } finally {
       if (mounted) {
@@ -116,156 +122,429 @@ class _WorkerRegistrationScreenState extends State<WorkerRegistrationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
-      appBar: AppBar(
-        title: const Text('Register as Worker'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF1E3A5F),
+              Color(0xFF2D5478),
+            ],
+          ),
+        ),
+        child: SafeArea(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Column(
+              // Custom App Bar
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Row(
                   children: [
-                    Icon(Icons.work, color: Colors.white, size: 48),
-                    SizedBox(height: 12),
-                    Text(
-                      'Join as a Service Provider',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+                    ),
+                    const Expanded(
+                      child: Text(
+                        'Join as Provider',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
                     ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Fill in your details to start receiving jobs',
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
-                    ),
+                    const SizedBox(width: 48),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 24),
-
-              // Name Field
-              _buildLabel('Full Name'),
-              TextFormField(
-                controller: _nameController,
-                decoration: _inputDecoration('Enter your full name', Icons.person),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter your name';
-                  }
-                  return null;
-                },
-              ),
-
-              const SizedBox(height: 16),
-
-              // Phone Field
-              _buildLabel('Phone Number'),
-              TextFormField(
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                decoration: _inputDecoration('Enter your phone number', Icons.phone),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter your phone number';
-                  }
-                  return null;
-                },
-              ),
-
-              const SizedBox(height: 16),
-
-              // Location Field
-              _buildLabel('Location / City'),
-              TextFormField(
-                controller: _locationController,
-                decoration: _inputDecoration('Enter your city', Icons.location_on),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter your location';
-                  }
-                  return null;
-                },
-              ),
-
-              const SizedBox(height: 16),
-
-              // Category Dropdown
-              _buildLabel('Service Category'),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey[300]!),
+              // Progress Indicator
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                child: Row(
+                  children: [
+                    _buildProgressDot(0),
+                    _buildProgressLine(0),
+                    _buildProgressDot(1),
+                    _buildProgressLine(1),
+                    _buildProgressDot(2),
+                  ],
                 ),
-                child: DropdownButtonFormField<String>(
-                  value: _selectedCategory,
-                  decoration: const InputDecoration(
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    border: InputBorder.none,
+              ),
+
+              // Form Content
+              Expanded(
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF8F9FA),
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(32),
+                      topRight: Radius.circular(32),
+                    ),
                   ),
-                  items: _categories.map((cat) {
-                    return DropdownMenuItem<String>(
-                      value: cat['value'],
-                      child: Row(
+                  child: Form(
+                    key: _formKey,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(cat['icon'], size: 20, color: Colors.grey[600]),
-                          const SizedBox(width: 12),
-                          Text(cat['label']),
+                          // Step Title
+                          Text(
+                            _getStepTitle(),
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E3A5F),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _getStepSubtitle(),
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          const SizedBox(height: 32),
+
+                          // Step Content
+                          if (_currentStep == 0) _buildPersonalInfoStep(),
+                          if (_currentStep == 1) _buildProfessionalInfoStep(),
+                          if (_currentStep == 2) _buildPricingStep(),
+
+                          const SizedBox(height: 32),
+
+                          // Navigation Buttons
+                          Row(
+                            children: [
+                              if (_currentStep > 0)
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: () {
+                                      setState(() => _currentStep--);
+                                    },
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: const Color(0xFF1E3A5F),
+                                      side: const BorderSide(color: Color(0xFF1E3A5F)),
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Back',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              if (_currentStep > 0) const SizedBox(width: 16),
+                              Expanded(
+                                flex: _currentStep > 0 ? 1 : 2,
+                                child: ElevatedButton(
+                                  onPressed: _isLoading ? null : _handleNext,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF1E3A5F),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(vertical: 16),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    elevation: 0,
+                                  ),
+                                  child: _isLoading
+                                      ? const SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2.5,
+                                          ),
+                                        )
+                                      : Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Text(
+                                              _currentStep == 2 ? 'Complete Registration' : 'Continue',
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Icon(
+                                              _currentStep == 2 ? Icons.check : Icons.arrow_forward,
+                                              size: 20,
+                                            ),
+                                          ],
+                                        ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedCategory = value!;
-                    });
-                  },
+                    ),
+                  ),
                 ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-              const SizedBox(height: 16),
-
-              // Experience Field
-              _buildLabel('Experience'),
-              TextFormField(
-                controller: _experienceController,
-                decoration: _inputDecoration('e.g., 5 years', Icons.timeline),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter your experience';
-                  }
-                  return null;
-                },
+  Widget _buildProgressDot(int step) {
+    final isActive = _currentStep >= step;
+    final isCurrent = _currentStep == step;
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: isActive ? Colors.white : Colors.white24,
+        borderRadius: BorderRadius.circular(18),
+        border: isCurrent
+            ? Border.all(color: Colors.white, width: 3)
+            : null,
+      ),
+      child: Center(
+        child: isActive && !isCurrent
+            ? const Icon(Icons.check, color: Color(0xFF1E3A5F), size: 20)
+            : Text(
+                '${step + 1}',
+                style: TextStyle(
+                  color: isActive ? const Color(0xFF1E3A5F) : Colors.white54,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
+      ),
+    );
+  }
 
-              const SizedBox(height: 16),
+  Widget _buildProgressLine(int step) {
+    final isActive = _currentStep > step;
+    return Expanded(
+      child: Container(
+        height: 3,
+        margin: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: isActive ? Colors.white : Colors.white24,
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
 
-              // Hourly Rate Field
-              _buildLabel('Hourly Rate (₹)'),
-              TextFormField(
+  String _getStepTitle() {
+    switch (_currentStep) {
+      case 0:
+        return 'Personal Information';
+      case 1:
+        return 'Professional Details';
+      case 2:
+        return 'Set Your Pricing';
+      default:
+        return '';
+    }
+  }
+
+  String _getStepSubtitle() {
+    switch (_currentStep) {
+      case 0:
+        return 'Let\'s start with your basic details';
+      case 1:
+        return 'Tell us about your expertise';
+      case 2:
+        return 'Set your hourly rate';
+      default:
+        return '';
+    }
+  }
+
+  Widget _buildPersonalInfoStep() {
+    return Column(
+      children: [
+        _buildTextField(
+          controller: _nameController,
+          label: 'Full Name',
+          hint: 'Enter your full name',
+          icon: Icons.person_outline,
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Please enter your name';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 20),
+        _buildTextField(
+          controller: _phoneController,
+          label: 'Phone Number',
+          hint: 'Enter your phone number',
+          icon: Icons.phone_outlined,
+          keyboardType: TextInputType.phone,
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Please enter your phone number';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 20),
+        _buildTextField(
+          controller: _locationController,
+          label: 'City / Location',
+          hint: 'Where are you based?',
+          icon: Icons.location_on_outlined,
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Please enter your location';
+            }
+            return null;
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProfessionalInfoStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Select Your Service Category',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF1E3A5F),
+          ),
+        ),
+        const SizedBox(height: 12),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 1,
+          ),
+          itemCount: _categories.length,
+          itemBuilder: (context, index) {
+            final category = _categories[index];
+            final isSelected = _selectedCategory == category['value'];
+            return GestureDetector(
+              onTap: () {
+                setState(() => _selectedCategory = category['value']);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                decoration: BoxDecoration(
+                  color: isSelected ? const Color(0xFF1E3A5F) : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: isSelected ? const Color(0xFF1E3A5F) : Colors.grey.shade300,
+                    width: isSelected ? 2 : 1,
+                  ),
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: const Color(0xFF1E3A5F).withAlpha(51),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      category['icon'],
+                      size: 28,
+                      color: isSelected ? Colors.white : const Color(0xFF1E3A5F),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      category['label'],
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: isSelected ? Colors.white : const Color(0xFF1E3A5F),
+                      ),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 24),
+        _buildTextField(
+          controller: _experienceController,
+          label: 'Years of Experience',
+          hint: 'e.g., 5 years',
+          icon: Icons.work_history_outlined,
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Please enter your experience';
+            }
+            return null;
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPricingStep() {
+    return Column(
+      children: [
+        // Pricing Card
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(13),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 70,
+                height: 70,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E3A5F).withAlpha(26),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(
+                  Icons.currency_rupee,
+                  size: 36,
+                  color: Color(0xFF1E3A5F),
+                ),
+              ),
+              const SizedBox(height: 20),
+              _buildTextField(
                 controller: _hourlyRateController,
+                label: 'Hourly Rate (₹)',
+                hint: 'e.g., 500',
+                icon: Icons.payments_outlined,
                 keyboardType: TextInputType.number,
-                decoration: _inputDecoration('e.g., 500', Icons.currency_rupee),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return 'Please enter your hourly rate';
@@ -276,92 +555,171 @@ class _WorkerRegistrationScreenState extends State<WorkerRegistrationScreen> {
                   return null;
                 },
               ),
+            ],
+          ),
+        ),
 
-              const SizedBox(height: 32),
+        const SizedBox(height: 24),
 
-              // Register Button
-              SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _registerWorker,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2196F3),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Text(
-                          'Register',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
+        // Tips
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F5E9),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFF81C784)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4CAF50),
+                  borderRadius: BorderRadius.circular(10),
                 ),
+                child: const Icon(Icons.lightbulb_outline, color: Colors.white, size: 20),
               ),
-
-              const SizedBox(height: 16),
-
-              // Terms text
-              Center(
-                child: Text(
-                  'By registering, you agree to our Terms of Service',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Pricing Tip',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2E7D32),
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Research local rates to stay competitive. You can update this anytime.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF558B2F),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
 
-  Widget _buildLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontWeight: FontWeight.w600,
-          fontSize: 14,
-          color: Colors.black87,
+        const SizedBox(height: 24),
+
+        // Terms
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.verified_user_outlined, color: Color(0xFF1E3A5F)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'By registering, you agree to our Terms of Service and Privacy Policy.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 
-  InputDecoration _inputDecoration(String hint, IconData icon) {
-    return InputDecoration(
-      hintText: hint,
-      prefixIcon: Icon(icon, color: Colors.grey[600]),
-      filled: true,
-      fillColor: Colors.white,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey[300]!),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey[300]!),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFF2196F3), width: 2),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Colors.red),
-      ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    TextInputType keyboardType = TextInputType.text,
+    String? Function(String?)? validator,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF1E3A5F),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          keyboardType: keyboardType,
+          validator: validator,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+          ),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(
+              color: Colors.grey[400],
+              fontWeight: FontWeight.normal,
+            ),
+            prefixIcon: Container(
+              margin: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E3A5F).withAlpha(26),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: const Color(0xFF1E3A5F), size: 20),
+            ),
+            filled: true,
+            fillColor: Colors.white,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: Color(0xFF1E3A5F), width: 2),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: Colors.red),
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          ),
+        ),
+      ],
     );
+  }
+
+  void _handleNext() {
+    if (_currentStep == 0) {
+      if (_nameController.text.trim().isEmpty ||
+          _phoneController.text.trim().isEmpty ||
+          _locationController.text.trim().isEmpty) {
+        _showSnackBar('Please fill in all fields', isError: true);
+        return;
+      }
+      setState(() => _currentStep++);
+    } else if (_currentStep == 1) {
+      if (_experienceController.text.trim().isEmpty) {
+        _showSnackBar('Please enter your experience', isError: true);
+        return;
+      }
+      setState(() => _currentStep++);
+    } else {
+      _registerWorker();
+    }
   }
 }
