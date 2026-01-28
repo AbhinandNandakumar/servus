@@ -2,14 +2,19 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'pages/home_page.dart';
+import 'pages/customer_login.dart';
 import 'worker/screens/worker_login.dart';
+import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Initialize notification service
+  await NotificationService().initialize();
+
   runApp(const ServusApp());
 }
 
@@ -111,11 +116,10 @@ class RoleSelectionScreen extends StatelessWidget {
                       color: Colors.white,
                       textColor: Colors.black,
                       onTap: () {
-                        // Changed from pushReplacement to push
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const HomePage(),
+                            builder: (context) => const CustomerLoginScreen(),
                           ),
                         );
                       },

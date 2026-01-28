@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'worker_dashboard.dart';
+import '../../services/notification_service.dart';
 
 class WorkerRegistrationScreen extends StatefulWidget {
   const WorkerRegistrationScreen({Key? key}) : super(key: key);
@@ -94,12 +95,19 @@ class _WorkerRegistrationScreenState extends State<WorkerRegistrationScreen> {
       final data = json.decode(response.body);
 
       if (data['success'] == true) {
+        // Register for push notifications
+        final workerId = data['worker_id'];
+        await NotificationService().registerForNotifications(
+          userId: workerId,
+          userType: 'worker',
+        );
+
         if (mounted) {
           _showSnackBar('Registration successful! Welcome aboard.');
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (context) => WorkerDashboard(workerId: data['worker_id']),
+              builder: (context) => WorkerDashboard(workerId: workerId),
             ),
           );
         }

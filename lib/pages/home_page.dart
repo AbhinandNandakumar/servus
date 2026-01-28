@@ -4,7 +4,9 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/service_category.dart';
+import '../worker/widgets/notification_overlay.dart';
 import 'search_results_page.dart';
 import 'booking_history_page.dart';
 import 'profile_page.dart';
@@ -21,6 +23,20 @@ class _HomePageState extends State<HomePage> {
   bool _loading = false;
   Uint8List? _selectedImageBytes;
   String? _selectedImageName;
+  String _customerName = 'User';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCustomerName();
+  }
+
+  Future<void> _loadCustomerName() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _customerName = prefs.getString('customer_name') ?? 'User';
+    });
+  }
 
   final List<ServiceCategory> _categories = [
     ServiceCategory('Plumber', Icons.build, const Color(0xFF2196F3)),
@@ -176,27 +192,29 @@ class _HomePageState extends State<HomePage> {
   // ------------------- UI -------------------
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF0F4F8),
-      body: Column(
-        children: [
-          _buildHeader(),
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildSearchSection(),
-                  _buildNearbyActivity(),
-                  _buildQuickAccess(),
-                  const SizedBox(height: 80),
-                ],
+    return NotificationOverlay(
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF0F4F8),
+        body: Column(
+          children: [
+            _buildHeader(),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSearchSection(),
+                    _buildNearbyActivity(),
+                    _buildQuickAccess(),
+                    const SizedBox(height: 80),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
+        bottomNavigationBar: _buildBottomNav(),
       ),
-      bottomNavigationBar: _buildBottomNav(),
     );
   }
 
@@ -323,16 +341,16 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(height: 24),
               RichText(
-                text: const TextSpan(
-                  style: TextStyle(
+                text: TextSpan(
+                  style: const TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
                       color: Colors.white),
                   children: [
-                    TextSpan(text: 'Good evening, '),
+                    const TextSpan(text: 'Good evening, '),
                     TextSpan(
-                        text: 'Alex', style: TextStyle(color: Color(0xFFFFD54F))),
-                    TextSpan(text: '.'),
+                        text: _customerName, style: const TextStyle(color: Color(0xFFFFD54F))),
+                    const TextSpan(text: '.'),
                   ],
                 ),
               ),

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'worker_dashboard.dart';
 import 'worker_registration.dart';
+import '../../services/notification_service.dart';
 
 class WorkerLoginScreen extends StatefulWidget {
   const WorkerLoginScreen({super.key});
@@ -65,11 +66,18 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen>
       final data = json.decode(response.body);
 
       if (data['success'] == true) {
+        // Register for push notifications
+        final workerId = data['worker_id'];
+        await NotificationService().registerForNotifications(
+          userId: workerId,
+          userType: 'worker',
+        );
+
         if (mounted) {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (context) => WorkerDashboard(workerId: data['worker_id']),
+              builder: (context) => WorkerDashboard(workerId: workerId),
             ),
           );
         }

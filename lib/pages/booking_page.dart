@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/firestore_service.dart';
 
 class BookingPage extends StatefulWidget {
@@ -20,6 +23,8 @@ class BookingPage extends StatefulWidget {
 class _BookingPageState extends State<BookingPage> {
   final FirestoreService _firestoreService = FirestoreService();
   bool _isBooking = false;
+  String? _customerId;
+  String? _customerName;
 
   int _selectedDateIndex = 0;
   int _selectedTimeIndex = 1; // Default to 10:00 AM
@@ -41,6 +46,15 @@ class _BookingPageState extends State<BookingPage> {
   void initState() {
     super.initState();
     _generateDates();
+    _loadCustomerInfo();
+  }
+
+  Future<void> _loadCustomerInfo() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _customerId = prefs.getString('customer_id');
+      _customerName = prefs.getString('customer_name');
+    });
   }
 
   void _generateDates() {
@@ -770,6 +784,8 @@ class _BookingPageState extends State<BookingPage> {
       'workerId': workerId,
       'workerName': workerName,
       'workerCategory': widget.detectedCategory,
+      'customerId': _customerId ?? '',
+      'customerName': _customerName ?? 'Customer',
       'customerQuery': widget.searchQuery,
       'date': '${selectedDate['year']}-${selectedDate['month']}-${selectedDate['date']}',
       'time': _times[_selectedTimeIndex],
@@ -789,6 +805,9 @@ class _BookingPageState extends State<BookingPage> {
       });
 
       if (bookingId != null) {
+        // Notify worker about new booking
+        _notifyWorker(bookingId, workerId);
+
         // Success - show confirmation dialog
         _showSuccessDialog(workerName);
       } else {
@@ -800,6 +819,23 @@ class _BookingPageState extends State<BookingPage> {
         _isBooking = false;
       });
       _showErrorSnackbar('Error: $e');
+    }
+  }
+
+  Future<void> _notifyWorker(String bookingId, String workerId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('http://localhost:8000/notify/new-booking'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'booking_id': bookingId,
+          'worker_id': workerId,
+        }),
+      );
+      print('DEBUG: Notify worker response: ${response.body}');
+    } catch (e) {
+      print('DEBUG: Error notifying worker: $e');
+      // Don't show error to user - notification is not critical
     }
   }
 

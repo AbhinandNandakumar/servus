@@ -318,6 +318,96 @@ class JobActionInput(BaseModel):
     action: str  # 'accept' or 'reject'
     reason: str = ""
 
+
+# -------------------------------
+# Notification Functions (Firestore-based for web compatibility)
+# -------------------------------
+def create_notification(user_id: str, user_type: str, title: str, body: str, notification_type: str, job_id: str = None):
+    """Create a notification in Firestore"""
+    try:
+        collection = 'worker_notifications' if user_type == 'worker' else 'customer_notifications'
+
+        notification_data = {
+            'title': title,
+            'body': body,
+            'type': notification_type,
+            'jobId': job_id,
+            'read': False,
+            'createdAt': firestore.SERVER_TIMESTAMP
+        }
+
+        # Add to user's notifications subcollection
+        db.collection(collection).document(user_id).collection('notifications').add(notification_data)
+        print(f"✅ Notification created for {user_type}: {user_id}")
+        return True
+    except Exception as e:
+        print(f"❌ Error creating notification: {e}")
+        return False
+
+
+def notify_worker_new_booking(worker_id: str, booking_data: dict):
+    """Notify worker about a new booking"""
+    try:
+        customer_query = booking_data.get('customerQuery', 'New service request')
+        body = f"{customer_query[:100]}..." if len(customer_query) > 100 else customer_query
+
+        return create_notification(
+            user_id=worker_id,
+            user_type='worker',
+            title="New Job Request! 🔔",
+            body=body,
+            notification_type='new_booking',
+            job_id=booking_data.get('id', '')
+        )
+    except Exception as e:
+        print(f"❌ Error notifying worker: {e}")
+        return False
+
+
+def notify_customer_job_status(booking_id: str, status: str, worker_name: str = "Worker"):
+    """Notify customer about job status change"""
+    try:
+        # Get booking to find customer info
+        booking_doc = db.collection('bookings').document(booking_id).get()
+        if not booking_doc.exists:
+            print(f"⚠️ Booking not found: {booking_id}")
+            return False
+
+        booking = booking_doc.to_dict()
+        customer_id = booking.get('customerId')
+
+        if not customer_id:
+            print(f"⚠️ No customer ID for booking {booking_id}")
+            return False
+
+        # Determine notification content based on status
+        if status == 'accepted':
+            title = "Job Accepted! ✅"
+            body = f"{worker_name} has accepted your service request and will arrive as scheduled."
+        elif status == 'rejected':
+            title = "Job Declined"
+            body = f"Unfortunately, {worker_name} is unable to take your job. Please book another provider."
+        elif status == 'in_progress':
+            title = "Work Started! 🔧"
+            body = f"{worker_name} has started working on your service request."
+        elif status == 'completed':
+            title = "Job Completed! 🎉"
+            body = f"{worker_name} has completed the job. Please rate your experience."
+        else:
+            return False
+
+        return create_notification(
+            user_id=customer_id,
+            user_type='customer',
+            title=title,
+            body=body,
+            notification_type='job_status_update',
+            job_id=booking_id
+        )
+    except Exception as e:
+        print(f"❌ Error notifying customer: {e}")
+        return False
+
 @app.post("/worker/register")
 async def register_worker(worker_input: WorkerRegistrationInput):
     """Register a new worker"""
@@ -482,11 +572,17 @@ async def worker_job_action(worker_id: str, action_input: JobActionInput):
         if booking_data.get('workerId') != worker_id:
             return {"success": False, "error": "Unauthorized - booking belongs to different worker"}
 
+        # Get worker name for notifications
+        worker_doc = db.collection('workers').document(worker_id).get()
+        worker_name = worker_doc.to_dict().get('name', 'Worker') if worker_doc.exists else 'Worker'
+
         if action == 'accept':
             booking_ref.update({
                 'status': 'accepted',
                 'acceptedAt': firestore.SERVER_TIMESTAMP
             })
+            # Notify customer
+            notify_customer_job_status(job_id, 'accepted', worker_name)
             return {"success": True, "message": "Job accepted successfully"}
 
         elif action == 'reject':
@@ -495,6 +591,8 @@ async def worker_job_action(worker_id: str, action_input: JobActionInput):
                 'rejectedAt': firestore.SERVER_TIMESTAMP,
                 'rejectionReason': action_input.reason
             })
+            # Notify customer
+            notify_customer_job_status(job_id, 'rejected', worker_name)
             return {"success": True, "message": "Job rejected"}
 
         elif action == 'complete':
@@ -502,6 +600,8 @@ async def worker_job_action(worker_id: str, action_input: JobActionInput):
                 'status': 'completed',
                 'completedAt': firestore.SERVER_TIMESTAMP
             })
+            # Notify customer
+            notify_customer_job_status(job_id, 'completed', worker_name)
             return {"success": True, "message": "Job marked as completed"}
 
         elif action == 'start':
@@ -509,6 +609,8 @@ async def worker_job_action(worker_id: str, action_input: JobActionInput):
                 'status': 'in_progress',
                 'startedAt': firestore.SERVER_TIMESTAMP
             })
+            # Notify customer
+            notify_customer_job_status(job_id, 'in_progress', worker_name)
             return {"success": True, "message": "Job started"}
 
         else:
@@ -531,6 +633,37 @@ async def get_workers_by_category(category: str):
         }
     except Exception as e:
         return {"success": False, "error": str(e), "workers": []}
+
+
+# -------------------------------
+# Booking Notification Endpoint
+# -------------------------------
+class BookingNotificationInput(BaseModel):
+    booking_id: str
+    worker_id: str
+
+@app.post("/notify/new-booking")
+async def notify_new_booking(input: BookingNotificationInput):
+    """Notify worker about a new booking - called after booking is created"""
+    try:
+        # Get booking data
+        booking_doc = db.collection('bookings').document(input.booking_id).get()
+        if not booking_doc.exists:
+            return {"success": False, "error": "Booking not found"}
+
+        booking_data = booking_doc.to_dict()
+        booking_data['id'] = input.booking_id
+
+        # Send notification to worker
+        result = notify_worker_new_booking(input.worker_id, booking_data)
+
+        return {
+            "success": result,
+            "message": "Notification sent" if result else "Failed to send notification"
+        }
+    except Exception as e:
+        print(f"❌ Error in notify_new_booking: {e}")
+        return {"success": False, "error": str(e)}
 
 
 # -------------------------------

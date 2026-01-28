@@ -1,6 +1,7 @@
 // lib/worker/screens/worker_dashboard.dart
 import 'package:flutter/material.dart';
 import '../services/worker_service.dart';
+import '../widgets/notification_overlay.dart';
 import 'worker_jobs.dart';
 
 class WorkerDashboard extends StatefulWidget {
@@ -49,44 +50,46 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF1E3A5F)),
-            )
-          : RefreshIndicator(
-              onRefresh: _loadProfile,
-              color: const Color(0xFF1E3A5F),
-              child: CustomScrollView(
-                slivers: [
-                  // Custom App Bar
-                  SliverToBoxAdapter(
-                    child: _buildHeader(),
-                  ),
+    return NotificationOverlay(
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF5F7FA),
+        body: _isLoading
+            ? const Center(
+                child: CircularProgressIndicator(color: Color(0xFF1E3A5F)),
+              )
+            : RefreshIndicator(
+                onRefresh: _loadProfile,
+                color: const Color(0xFF1E3A5F),
+                child: CustomScrollView(
+                  slivers: [
+                    // Custom App Bar
+                    SliverToBoxAdapter(
+                      child: _buildHeader(),
+                    ),
 
-                  // Stats Cards
-                  SliverToBoxAdapter(
-                    child: _buildStatsSection(),
-                  ),
+                    // Stats Cards
+                    SliverToBoxAdapter(
+                      child: _buildStatsSection(),
+                    ),
 
-                  // Quick Actions
-                  SliverToBoxAdapter(
-                    child: _buildQuickActions(),
-                  ),
+                    // Quick Actions
+                    SliverToBoxAdapter(
+                      child: _buildQuickActions(),
+                    ),
 
-                  // Recent Activity
-                  SliverToBoxAdapter(
-                    child: _buildRecentActivity(),
-                  ),
+                    // Recent Activity
+                    SliverToBoxAdapter(
+                      child: _buildRecentActivity(),
+                    ),
 
-                  const SliverToBoxAdapter(
-                    child: SizedBox(height: 100),
-                  ),
-                ],
+                    const SliverToBoxAdapter(
+                      child: SizedBox(height: 100),
+                    ),
+                  ],
+                ),
               ),
-            ),
-      bottomNavigationBar: _buildBottomNav(),
+        bottomNavigationBar: _buildBottomNav(),
+      ),
     );
   }
 
