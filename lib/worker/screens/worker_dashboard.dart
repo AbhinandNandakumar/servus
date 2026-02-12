@@ -4,6 +4,7 @@ import '../services/worker_service.dart';
 import '../widgets/notification_overlay.dart';
 import 'worker_jobs.dart';
 import 'worker_chat_list_page.dart';
+import 'worker_schedule_screen.dart';
 
 class WorkerDashboard extends StatefulWidget {
   final String? workerId;
@@ -446,7 +447,16 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
                   'Manage availability',
                   Icons.calendar_today_rounded,
                   const Color(0xFF4CAF50),
-                  () {},
+                  () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => WorkerScheduleScreen(
+                          workerId: _workerService.currentWorkerId,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ],

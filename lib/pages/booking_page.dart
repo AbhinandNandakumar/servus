@@ -27,26 +27,26 @@ class _BookingPageState extends State<BookingPage> {
   String? _customerName;
 
   int _selectedDateIndex = 0;
-  int _selectedTimeIndex = 1; // Default to 10:00 AM
+  int _selectedTimeIndex = -1;
 
   final List<Map<String, String>> _dates = [];
-  final List<String> _times = [
-    '09:00 AM',
-    '10:00 AM',
-    '11:00 AM',
-    '01:00 PM',
-    '02:00 PM',
-    '04:00 PM',
-  ];
+  List<String> _times = [];
+  List<int> _unavailableTimeSlots = [];
 
-  // Track unavailable time slots (index based)
-  final List<int> _unavailableTimeSlots = [5]; // 04:00 PM unavailable
+  // Availability state
+  Map<String, dynamic> _workerAvailability = {};
+  bool _isLoadingAvailability = true;
+
+  static const List<String> _monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
 
   @override
   void initState() {
     super.initState();
-    _generateDates();
     _loadCustomerInfo();
+    _loadWorkerAvailability();
   }
 
   Future<void> _loadCustomerInfo() async {
@@ -57,23 +57,110 @@ class _BookingPageState extends State<BookingPage> {
     });
   }
 
+  Future<void> _loadWorkerAvailability() async {
+    final workerId = widget.worker['id']?.toString() ?? '';
+    if (workerId.isEmpty) {
+      setState(() => _isLoadingAvailability = false);
+      return;
+    }
+    final availability =
+        await _firestoreService.getWorkerAvailability(workerId);
+    setState(() {
+      _workerAvailability = availability;
+      _isLoadingAvailability = false;
+    });
+    _generateDates();
+    if (_dates.isNotEmpty) {
+      _generateTimeSlotsForSelectedDate();
+      _loadBookedSlots();
+    }
+  }
+
   void _generateDates() {
+    _dates.clear();
     final now = DateTime.now();
     final weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    final months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
 
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 30; i++) {
       final date = now.add(Duration(days: i));
-      _dates.add({
-        'day': weekdays[date.weekday % 7],
-        'date': date.day.toString(),
-        'month': months[date.month - 1],
-        'year': date.year.toString(),
-      });
+      final dateKey =
+          '${date.year}-${_monthNames[date.month - 1]}-${date.day}';
+      if (_workerAvailability.containsKey(dateKey)) {
+        final avail = _workerAvailability[dateKey] as Map<String, dynamic>;
+        _dates.add({
+          'day': weekdays[date.weekday % 7],
+          'date': date.day.toString(),
+          'month': _monthNames[date.month - 1],
+          'year': date.year.toString(),
+          'dateKey': dateKey,
+          'startTime': avail['startTime'] ?? '09:00 AM',
+          'endTime': avail['endTime'] ?? '05:00 PM',
+        });
+      }
     }
+    setState(() {
+      _selectedDateIndex = 0;
+      _selectedTimeIndex = -1;
+    });
+  }
+
+  void _generateTimeSlotsForSelectedDate() {
+    if (_dates.isEmpty || _selectedDateIndex >= _dates.length) {
+      setState(() => _times = []);
+      return;
+    }
+    final date = _dates[_selectedDateIndex];
+    final startHour = _parseHour(date['startTime']!);
+    final endHour = _parseHour(date['endTime']!);
+
+    final slots = <String>[];
+    for (int h = startHour; h < endHour; h++) {
+      final period = h >= 12 ? 'PM' : 'AM';
+      final displayHour = h > 12 ? h - 12 : (h == 0 ? 12 : h);
+      slots.add(
+          '${displayHour.toString().padLeft(2, '0')}:00 $period');
+    }
+    setState(() {
+      _times = slots;
+      _selectedTimeIndex = -1;
+    });
+  }
+
+  int _parseHour(String timeStr) {
+    final parts = timeStr.split(' ');
+    final timeParts = parts[0].split(':');
+    var hour = int.parse(timeParts[0]);
+    final isPm = parts[1].toUpperCase() == 'PM';
+    if (isPm && hour != 12) hour += 12;
+    if (!isPm && hour == 12) hour = 0;
+    return hour;
+  }
+
+  Future<void> _loadBookedSlots() async {
+    if (_dates.isEmpty || _selectedDateIndex >= _dates.length) return;
+    final workerId = widget.worker['id']?.toString() ?? '';
+    if (workerId.isEmpty) return;
+
+    final dateKey = _dates[_selectedDateIndex]['dateKey']!;
+    final bookedTimes =
+        await _firestoreService.getBookedTimeSlotsForWorker(workerId, dateKey);
+
+    setState(() {
+      _unavailableTimeSlots = [];
+      for (int i = 0; i < _times.length; i++) {
+        if (bookedTimes.contains(_times[i])) {
+          _unavailableTimeSlots.add(i);
+        }
+      }
+      // Auto-select first available slot
+      _selectedTimeIndex = -1;
+      for (int i = 0; i < _times.length; i++) {
+        if (!_unavailableTimeSlots.contains(i)) {
+          _selectedTimeIndex = i;
+          break;
+        }
+      }
+    });
   }
 
   String get _selectedMonth {
@@ -141,40 +228,49 @@ class _BookingPageState extends State<BookingPage> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 16),
+      body: _isLoadingAvailability
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 16),
 
-            // Worker Info Card
-            _buildWorkerCard(name, title, experience, hourlyRate, rating),
+                  // Worker Info Card
+                  _buildWorkerCard(name, title, experience, hourlyRate, rating),
 
-            const SizedBox(height: 24),
+                  const SizedBox(height: 24),
 
-            // Date Selection
-            _buildDateSelection(),
+                  if (_dates.isEmpty) ...[
+                    _buildNoAvailabilityMessage(),
+                  ] else ...[
+                    // Date Selection
+                    _buildDateSelection(),
 
-            const SizedBox(height: 24),
+                    const SizedBox(height: 24),
 
-            // Time Selection
-            _buildTimeSelection(),
+                    // Time Selection
+                    _buildTimeSelection(),
 
-            const SizedBox(height: 24),
+                    const SizedBox(height: 24),
 
-            // Booking Summary
-            _buildBookingSummary(hourlyRate, bookingFee, totalEstimate),
+                    // Booking Summary
+                    if (_selectedTimeIndex >= 0)
+                      _buildBookingSummary(hourlyRate, bookingFee, totalEstimate),
 
-            const SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
-            // Info Notice
-            _buildInfoNotice(),
+                    // Info Notice
+                    _buildInfoNotice(),
+                  ],
 
-            const SizedBox(height: 100), // Space for bottom button
-          ],
-        ),
-      ),
-      bottomSheet: _buildBottomSheet(totalEstimate),
+                  const SizedBox(height: 100), // Space for bottom button
+                ],
+              ),
+            ),
+      bottomSheet: _dates.isEmpty || _selectedTimeIndex < 0
+          ? null
+          : _buildBottomSheet(totalEstimate),
     );
   }
 
@@ -312,6 +408,40 @@ class _BookingPageState extends State<BookingPage> {
     );
   }
 
+  Widget _buildNoAvailabilityMessage() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.event_busy, size: 64, color: Colors.grey[300]),
+          const SizedBox(height: 16),
+          Text(
+            'No Available Dates',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[700],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'This worker hasn\'t set their availability yet. Please check back later or try another worker.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[500],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDateSelection() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -351,6 +481,8 @@ class _BookingPageState extends State<BookingPage> {
                     setState(() {
                       _selectedDateIndex = index;
                     });
+                    _generateTimeSlotsForSelectedDate();
+                    _loadBookedSlots();
                   },
                   child: Container(
                     width: 60,
@@ -768,6 +900,11 @@ class _BookingPageState extends State<BookingPage> {
       return;
     }
 
+    if (_selectedTimeIndex < 0 || _selectedTimeIndex >= _times.length) {
+      _showErrorSnackbar('Please select a time slot.');
+      return;
+    }
+
     setState(() {
       _isBooking = true;
     });
@@ -776,8 +913,10 @@ class _BookingPageState extends State<BookingPage> {
 
     // Get selected date details
     final selectedDate = _dates[_selectedDateIndex];
-    final now = DateTime.now();
-    final bookingDate = now.add(Duration(days: _selectedDateIndex));
+    final year = int.parse(selectedDate['year']!);
+    final monthIndex = _monthNames.indexOf(selectedDate['month']!) + 1;
+    final day = int.parse(selectedDate['date']!);
+    final bookingDate = DateTime(year, monthIndex, day);
 
     // Prepare booking data
     final bookingData = {

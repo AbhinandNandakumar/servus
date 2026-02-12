@@ -449,4 +449,71 @@ class FirestoreService {
       print('Workers collection already has data, skipping seed.');
     }
   }
+
+  // Get worker availability map
+  Future<Map<String, dynamic>> getWorkerAvailability(String workerId) async {
+    try {
+      final doc = await _db.collection('workers').doc(workerId).get();
+      if (doc.exists) {
+        final data = doc.data()!;
+        return Map<String, dynamic>.from(data['availability'] ?? {});
+      }
+      return {};
+    } catch (e) {
+      print('Error fetching worker availability: $e');
+      return {};
+    }
+  }
+
+  // Set availability for a specific date
+  Future<bool> setWorkerAvailability(
+      String workerId, String dateKey, Map<String, String> timeRange) async {
+    try {
+      await _db.collection('workers').doc(workerId).update({
+        'availability.$dateKey': timeRange,
+      });
+      return true;
+    } catch (e) {
+      print('Error setting availability: $e');
+      return false;
+    }
+  }
+
+  // Remove availability for a specific date
+  Future<bool> removeWorkerAvailability(String workerId, String dateKey) async {
+    try {
+      await _db.collection('workers').doc(workerId).update({
+        'availability.$dateKey': FieldValue.delete(),
+      });
+      return true;
+    } catch (e) {
+      print('Error removing availability: $e');
+      return false;
+    }
+  }
+
+  // Get active bookings for a worker on a specific date
+  Future<List<String>> getBookedTimeSlotsForWorker(
+      String workerId, String dateKey) async {
+    try {
+      final snapshot = await _db
+          .collection('bookings')
+          .where('workerId', isEqualTo: workerId)
+          .where('date', isEqualTo: dateKey)
+          .get();
+
+      return snapshot.docs
+          .where((doc) {
+            final status = doc.data()['status'] ?? '';
+            return status == 'pending' ||
+                status == 'accepted' ||
+                status == 'in_progress';
+          })
+          .map((doc) => doc.data()['time'] as String)
+          .toList();
+    } catch (e) {
+      print('Error fetching booked time slots: $e');
+      return [];
+    }
+  }
 }
