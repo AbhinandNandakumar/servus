@@ -235,25 +235,25 @@ class _ChatListPageState extends State<ChatListPage> {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha(25),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
+            color: Colors.black.withAlpha(13),
+            blurRadius: 20,
+            offset: const Offset(0, -5),
           ),
         ],
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildNavItem(Icons.home, 'Home', false, () {
+              _buildNavItem(Icons.home_rounded, 'Home', false, () {
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(builder: (context) => const HomePage()),
                 );
               }),
-              _buildNavItem(Icons.calendar_today, 'Bookings', false, () {
+              _buildNavItem(Icons.calendar_today_rounded, 'Bookings', false, () {
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
@@ -261,8 +261,8 @@ class _ChatListPageState extends State<ChatListPage> {
                 );
               }),
               _buildNavItem(
-                  Icons.chat_bubble_outline, 'Messages', true, () {}),
-              _buildNavItem(Icons.person_outline, 'Profile', false, () {
+                  Icons.chat_bubble_outline_rounded, 'Messages', true, () {}),
+              _buildNavItem(Icons.person_outline_rounded, 'Profile', false, () {
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
@@ -280,21 +280,36 @@ class _ChatListPageState extends State<ChatListPage> {
       IconData icon, String label, bool isActive, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon,
-              color: isActive ? const Color(0xFF2196F3) : Colors.grey),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: EdgeInsets.symmetric(
+          horizontal: isActive ? 16 : 12,
+          vertical: 8,
+        ),
+        decoration: BoxDecoration(
+          color: isActive ? const Color(0xFF2196F3).withAlpha(26) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
               color: isActive ? const Color(0xFF2196F3) : Colors.grey,
-              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+              size: 24,
             ),
-          ),
-        ],
+            if (isActive) ...[
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Color(0xFF2196F3),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

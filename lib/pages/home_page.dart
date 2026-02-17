@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/service_category.dart';
 import '../worker/widgets/notification_overlay.dart';
 import 'search_results_page.dart';
@@ -26,17 +27,48 @@ class _HomePageState extends State<HomePage> {
   Uint8List? _selectedImageBytes;
   String? _selectedImageName;
   String _customerName = 'User';
+  String _customerLocation = 'Set your location';
+  Uint8List? _profileImageBytes;
 
   @override
   void initState() {
     super.initState();
-    _loadCustomerName();
+    _loadCustomerInfo();
   }
 
-  Future<void> _loadCustomerName() async {
+  Future<void> _loadCustomerInfo() async {
     final prefs = await SharedPreferences.getInstance();
+    final name = prefs.getString('customer_name') ?? 'User';
+    var location = 'Set your location';
+
+    // Try loading location from Firestore
+    final customerId = prefs.getString('customer_id');
+    if (customerId != null) {
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('customers')
+            .doc(customerId)
+            .get();
+        if (doc.exists) {
+          final data = doc.data()!;
+          if (data['location'] != null && (data['location'] as String).isNotEmpty) {
+            location = data['location'];
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Load saved profile image
+    final savedImage = prefs.getString('profile_image_base64');
+    Uint8List? profileImage;
+    if (savedImage != null) {
+      profileImage = base64Decode(savedImage);
+    }
+
     setState(() {
-      _customerName = prefs.getString('customer_name') ?? 'User';
+      _customerName = name;
+      _customerLocation = location;
+      _profileImageBytes = profileImage;
     });
   }
 
@@ -254,8 +286,18 @@ class _HomePageState extends State<HomePage> {
                               borderRadius: BorderRadius.circular(24),
                               border: Border.all(color: Colors.white, width: 2),
                             ),
-                            child: const Icon(Icons.person,
-                                color: Colors.white, size: 28),
+                            child: _profileImageBytes != null
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(22),
+                                    child: Image.memory(
+                                      _profileImageBytes!,
+                                      width: 44,
+                                      height: 44,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  )
+                                : const Icon(Icons.person,
+                                    color: Colors.white, size: 28),
                           ),
                           Positioned(
                             bottom: 0,
@@ -285,17 +327,17 @@ class _HomePageState extends State<HomePage> {
                             ),
                           ),
                           Row(
-                            children: const [
+                            children: [
                               Text(
-                                'San Francisco, CA',
-                                style: TextStyle(
+                                _customerLocation,
+                                style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                   color: Colors.white,
                                 ),
                               ),
-                              SizedBox(width: 4),
-                              Icon(Icons.location_on,
+                              const SizedBox(width: 4),
+                              const Icon(Icons.location_on,
                                   color: Colors.white, size: 18),
                             ],
                           ),
@@ -714,16 +756,22 @@ class _HomePageState extends State<HomePage> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: Colors.grey[200]!)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(13),
+            blurRadius: 20,
+            offset: const Offset(0, -5),
+          ),
+        ],
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildNavItem(Icons.home, 'Home', true, null),
-              _buildNavItem(Icons.calendar_today_outlined, 'Bookings', false, () {
+              _buildNavItem(Icons.home_rounded, 'Home', true, () {}),
+              _buildNavItem(Icons.calendar_today_rounded, 'Bookings', false, () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -731,7 +779,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                 );
               }),
-              _buildNavItem(Icons.chat_bubble_outline, 'Messages', false, () {
+              _buildNavItem(Icons.chat_bubble_outline_rounded, 'Messages', false, () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -739,13 +787,13 @@ class _HomePageState extends State<HomePage> {
                   ),
                 );
               }),
-              _buildNavItem(Icons.person_outline, 'Profile', false, () {
+              _buildNavItem(Icons.person_outline_rounded, 'Profile', false, () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => const ProfilePage(),
                   ),
-                );
+                ).then((_) => _loadCustomerInfo());
               }),
             ],
           ),
@@ -754,27 +802,39 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildNavItem(IconData icon, String label, bool isActive, VoidCallback? onTap) {
+  Widget _buildNavItem(IconData icon, String label, bool isActive, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: isActive ? const Color(0xFF2196F3) : Colors.grey,
-            size: 28,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: EdgeInsets.symmetric(
+          horizontal: isActive ? 16 : 12,
+          vertical: 8,
+        ),
+        decoration: BoxDecoration(
+          color: isActive ? const Color(0xFF2196F3).withAlpha(26) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
               color: isActive ? const Color(0xFF2196F3) : Colors.grey,
-              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+              size: 24,
             ),
-          ),
-        ],
+            if (isActive) ...[
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Color(0xFF2196F3),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

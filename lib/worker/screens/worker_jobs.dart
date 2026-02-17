@@ -2,6 +2,9 @@
 import 'package:flutter/material.dart';
 import '../services/worker_service.dart';
 import '../widgets/job_card.dart';
+import 'worker_dashboard.dart';
+import 'worker_chat_list_page.dart';
+import 'worker_profile_page.dart';
 
 class WorkerJobsScreen extends StatefulWidget {
   final String workerId;
@@ -197,6 +200,7 @@ class _WorkerJobsScreenState extends State<WorkerJobsScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
+      bottomNavigationBar: _buildBottomNav(),
       body: CustomScrollView(
         slivers: [
           // Custom App Bar
@@ -498,6 +502,93 @@ class _WorkerJobsScreenState extends State<WorkerJobsScreen>
       default:
         return 'No Jobs Yet';
     }
+  }
+
+  Widget _buildBottomNav() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(13),
+            blurRadius: 20,
+            offset: const Offset(0, -5),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildNavItem(Icons.dashboard_rounded, 'Home', false, () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => WorkerDashboard(workerId: widget.workerId),
+                  ),
+                );
+              }),
+              _buildNavItem(Icons.work_outline_rounded, 'Jobs', true, () {}),
+              _buildNavItem(Icons.chat_bubble_outline_rounded, 'Messages', false, () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => WorkerChatListPage(workerId: widget.workerId),
+                  ),
+                );
+              }),
+              _buildNavItem(Icons.person_outline_rounded, 'Profile', false, () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => WorkerProfilePage(workerId: widget.workerId),
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem(IconData icon, String label, bool isActive, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: EdgeInsets.symmetric(
+          horizontal: isActive ? 16 : 12,
+          vertical: 8,
+        ),
+        decoration: BoxDecoration(
+          color: isActive ? const Color(0xFF1E3A5F).withAlpha(26) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: isActive ? const Color(0xFF1E3A5F) : Colors.grey,
+              size: 24,
+            ),
+            if (isActive) ...[
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Color(0xFF1E3A5F),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   String _getEmptySubtitle() {

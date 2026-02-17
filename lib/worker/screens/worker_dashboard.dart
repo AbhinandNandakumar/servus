@@ -1,10 +1,15 @@
 // lib/worker/screens/worker_dashboard.dart
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:file_picker/file_picker.dart';
 import '../services/worker_service.dart';
 import '../widgets/notification_overlay.dart';
 import 'worker_jobs.dart';
 import 'worker_chat_list_page.dart';
 import 'worker_schedule_screen.dart';
+import 'worker_profile_page.dart';
 
 class WorkerDashboard extends StatefulWidget {
   final String? workerId;
@@ -21,6 +26,7 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
   Map<String, dynamic> _workerProfile = {};
   bool _isLoading = true;
   int _selectedNavIndex = 0;
+  Uint8List? _profileImageBytes;
 
   @override
   void initState() {
@@ -33,11 +39,62 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
 
   Future<void> _loadProfile() async {
     final profile = await _workerService.getWorkerProfile();
+
+    // Load saved profile image
+    final prefs = await SharedPreferences.getInstance();
+    final savedImage = prefs.getString('worker_profile_image_base64');
+    Uint8List? profileImage;
+    if (savedImage != null) {
+      profileImage = base64Decode(savedImage);
+    }
+
     setState(() {
       _workerProfile = profile['worker'] ?? {};
       _stats = profile['stats'] ?? {};
+      _profileImageBytes = profileImage;
       _isLoading = false;
     });
+  }
+
+  Future<void> _pickProfileImage() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        dialogTitle: 'Select a profile photo',
+        type: FileType.any,
+        withData: true,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        final extension = file.name.split('.').last.toLowerCase();
+        final imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
+
+        if (!imageExtensions.contains(extension)) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please select an image file (jpg, png, gif, etc.)'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+          return;
+        }
+
+        if (file.bytes != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('worker_profile_image_base64', base64Encode(file.bytes!));
+
+          setState(() {
+            _profileImageBytes = file.bytes;
+          });
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error picking image: $e')),
+      );
+    }
   }
 
   String _formatCategory(dynamic category) {
@@ -100,6 +157,7 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
     final category = _formatCategory(_workerProfile['category']);
     final rating = _stats['rating'] ?? 0.0;
     final earnings = _stats['total_earnings'] ?? 0.0;
+    final location = _workerProfile['location'] ?? '';
 
     return Container(
       decoration: const BoxDecoration(
@@ -122,26 +180,47 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Good ${_getGreeting()}',
-                        style: TextStyle(
-                          color: Colors.white.withAlpha(179),
-                          fontSize: 14,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Good ${_getGreeting()}',
+                          style: TextStyle(
+                            color: Colors.white.withAlpha(179),
+                            fontSize: 14,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
+                        const SizedBox(height: 4),
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                    ],
+                        if (location.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(Icons.location_on, color: Colors.white.withAlpha(179), size: 14),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  location,
+                                  style: TextStyle(
+                                    color: Colors.white.withAlpha(179),
+                                    fontSize: 13,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                   Row(
                     children: [
@@ -158,22 +237,35 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
                         ),
                       ),
                       const SizedBox(width: 12),
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Center(
-                          child: Text(
-                            name.isNotEmpty ? name[0].toUpperCase() : 'W',
-                            style: const TextStyle(
-                              color: Color(0xFF1E3A5F),
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
+                      GestureDetector(
+                        onTap: _pickProfileImage,
+                        child: Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
                           ),
+                          child: _profileImageBytes != null
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: Image.memory(
+                                    _profileImageBytes!,
+                                    width: 48,
+                                    height: 48,
+                                    fit: BoxFit.cover,
+                                  ),
+                                )
+                              : Center(
+                                  child: Text(
+                                    name.isNotEmpty ? name[0].toUpperCase() : 'W',
+                                    style: const TextStyle(
+                                      color: Color(0xFF1E3A5F),
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
                         ),
                       ),
                     ],
@@ -739,6 +831,13 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
               builder: (context) => WorkerChatListPage(workerId: _workerService.currentWorkerId),
             ),
           );
+        } else if (index == 3) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => WorkerProfilePage(workerId: _workerService.currentWorkerId),
+            ),
+          ).then((_) => _loadProfile());
         }
       },
       child: AnimatedContainer(

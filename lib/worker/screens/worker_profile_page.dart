@@ -4,31 +4,33 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
-import 'booking_history_page.dart';
-import 'chat_list_page.dart';
-import 'home_page.dart';
-import '../main.dart';
+import '../../main.dart';
+import '../services/worker_service.dart';
+import 'worker_dashboard.dart';
+import 'worker_jobs.dart';
+import 'worker_chat_list_page.dart';
 
-class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
+class WorkerProfilePage extends StatefulWidget {
+  final String workerId;
+
+  const WorkerProfilePage({super.key, required this.workerId});
 
   @override
-  State<ProfilePage> createState() => _ProfilePageState();
+  State<WorkerProfilePage> createState() => _WorkerProfilePageState();
 }
 
-class _ProfilePageState extends State<ProfilePage> {
+class _WorkerProfilePageState extends State<WorkerProfilePage> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   bool _isLoading = true;
-  String? _customerId;
-  Map<String, dynamic> _userData = {};
-
-  // Profile image (stored in memory for this session)
+  Map<String, dynamic> _workerData = {};
   Uint8List? _profileImageBytes;
 
   // Stats
-  int _totalBookings = 0;
+  int _totalJobs = 0;
   int _completedJobs = 0;
+  double _rating = 0.0;
+  double _totalEarnings = 0.0;
 
   @override
   void initState() {
@@ -38,61 +40,70 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _loadProfile() async {
     final prefs = await SharedPreferences.getInstance();
-    _customerId = prefs.getString('customer_id');
 
     // Load saved profile image
-    final savedImage = prefs.getString('profile_image_base64');
+    final savedImage = prefs.getString('worker_profile_image_base64');
     if (savedImage != null) {
       _profileImageBytes = base64Decode(savedImage);
     }
 
-    if (_customerId == null) {
-      setState(() => _isLoading = false);
-      return;
-    }
-
     try {
-      // Load customer document
-      final doc = await _db.collection('customers').doc(_customerId).get();
+      // Load worker document from Firestore
+      final doc = await _db.collection('workers').doc(widget.workerId).get();
       if (doc.exists) {
-        _userData = doc.data()!;
-        _userData['id'] = doc.id;
-      } else {
-        // Fallback to SharedPreferences data
-        _userData = {
-          'name': prefs.getString('customer_name') ?? 'User',
-          'phone': prefs.getString('customer_phone') ?? '',
-        };
+        _workerData = doc.data()!;
+        _workerData['id'] = doc.id;
       }
 
-      // Load booking stats
+      // Load job stats from bookings
       final bookingsSnapshot = await _db
           .collection('bookings')
-          .where('customerId', isEqualTo: _customerId)
+          .where('workerId', isEqualTo: widget.workerId)
           .get();
 
-      _totalBookings = bookingsSnapshot.docs.length;
+      _totalJobs = bookingsSnapshot.docs.length;
       _completedJobs = bookingsSnapshot.docs
           .where((doc) => doc.data()['status'] == 'completed')
           .length;
+
+      // Get rating and earnings from worker service
+      final workerService = WorkerService();
+      workerService.setWorkerId(widget.workerId);
+      final profile = await workerService.getWorkerProfile();
+      final stats = profile['stats'] ?? {};
+      _rating = (stats['rating'] ?? 0.0).toDouble();
+      _totalEarnings = (stats['total_earnings'] ?? 0.0).toDouble();
     } catch (e) {
-      print('Error loading profile: $e');
+      print('Error loading worker profile: $e');
     }
 
     setState(() => _isLoading = false);
+  }
+
+  String _formatCategory(dynamic category) {
+    if (category == null) return 'Professional';
+    String cat = category.toString();
+    return cat.split('_').map((word) {
+      if (word.isEmpty) return '';
+      if (word.toLowerCase() == 'ac') return 'AC';
+      return word[0].toUpperCase() + word.substring(1);
+    }).join(' ');
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
-        backgroundColor: Color(0xFFF5F5F5),
-        body: Center(child: CircularProgressIndicator()),
+        backgroundColor: Color(0xFFF5F7FA),
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF1E3A5F)),
+        ),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: const Color(0xFFF5F7FA),
+      bottomNavigationBar: _buildBottomNav(),
       body: Column(
         children: [
           _buildHeader(),
@@ -104,28 +115,28 @@ class _ProfilePageState extends State<ProfilePage> {
                   _buildMenuSection(),
                   const SizedBox(height: 20),
                   _buildLogoutButton(),
-                  const SizedBox(height: 100),
+                  const SizedBox(height: 40),
                 ],
               ),
             ),
           ),
         ],
       ),
-      bottomNavigationBar: _buildBottomNav(),
     );
   }
 
   Widget _buildHeader() {
-    final name = _userData['name'] ?? 'User';
-    final phone = _userData['phone'] ?? '';
-    final location = _userData['location'] ?? '';
+    final name = _workerData['name'] ?? 'Worker';
+    final phone = _workerData['phone'] ?? '';
+    final location = _workerData['location'] ?? '';
+    final category = _formatCategory(_workerData['category']);
 
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF1565C0), Color(0xFF1E88E5), Color(0xFF42A5F5)],
+          colors: [Color(0xFF1E3A5F), Color(0xFF2D5478)],
         ),
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(30),
@@ -137,7 +148,7 @@ class _ProfilePageState extends State<ProfilePage> {
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
-              // Top row with back button and edit
+              // Top row
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -149,20 +160,12 @@ class _ProfilePageState extends State<ProfilePage> {
                         color: Colors.white.withAlpha(51),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(
-                        Icons.arrow_back,
-                        color: Colors.white,
-                        size: 24,
-                      ),
+                      child: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
                     ),
                   ),
                   const Text(
                     'Profile',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                   GestureDetector(
                     onTap: _editProfile,
@@ -172,11 +175,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         color: Colors.white.withAlpha(51),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(
-                        Icons.edit,
-                        color: Colors.white,
-                        size: 24,
-                      ),
+                      child: const Icon(Icons.edit, color: Colors.white, size: 24),
                     ),
                   ),
                 ],
@@ -210,11 +209,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               fit: BoxFit.cover,
                             ),
                           )
-                        : const Icon(
-                            Icons.person,
-                            size: 60,
-                            color: Color(0xFF1565C0),
-                          ),
+                        : const Icon(Icons.person, size: 60, color: Color(0xFF1E3A5F)),
                   ),
                   Positioned(
                     bottom: 0,
@@ -224,15 +219,11 @@ class _ProfilePageState extends State<ProfilePage> {
                       child: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF2196F3),
+                          color: const Color(0xFF1E3A5F),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(color: Colors.white, width: 2),
                         ),
-                        child: const Icon(
-                          Icons.camera_alt,
-                          color: Colors.white,
-                          size: 16,
-                        ),
+                        child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
                       ),
                     ),
                   ),
@@ -242,24 +233,29 @@ class _ProfilePageState extends State<ProfilePage> {
               // Name
               Text(
                 name,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
               ),
               const SizedBox(height: 4),
+              // Category badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4CAF50),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  category,
+                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
+              const SizedBox(height: 8),
               // Phone
               Text(
                 phone,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.white.withAlpha(204),
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.white.withAlpha(204)),
               ),
               if (location.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                // Location badge
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
@@ -269,19 +265,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(
-                        Icons.location_on,
-                        color: Colors.white,
-                        size: 16,
-                      ),
+                      const Icon(Icons.location_on, color: Colors.white, size: 16),
                       const SizedBox(width: 4),
-                      Text(
-                        location,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                        ),
-                      ),
+                      Text(location, style: const TextStyle(color: Colors.white, fontSize: 14)),
                     ],
                   ),
                 ),
@@ -313,17 +299,13 @@ class _ProfilePageState extends State<ProfilePage> {
           children: [
             Expanded(
               child: _buildStatItem(
-                icon: Icons.calendar_today,
-                value: '$_totalBookings',
-                label: 'Total Bookings',
-                color: const Color(0xFF2196F3),
+                icon: Icons.work_outline,
+                value: '$_totalJobs',
+                label: 'Total Jobs',
+                color: const Color(0xFF1E3A5F),
               ),
             ),
-            Container(
-              width: 1,
-              height: 50,
-              color: Colors.grey.withAlpha(51),
-            ),
+            Container(width: 1, height: 50, color: Colors.grey.withAlpha(51)),
             Expanded(
               child: _buildStatItem(
                 icon: Icons.check_circle,
@@ -332,19 +314,22 @@ class _ProfilePageState extends State<ProfilePage> {
                 color: Colors.green,
               ),
             ),
-            Container(
-              width: 1,
-              height: 50,
-              color: Colors.grey.withAlpha(51),
-            ),
+            Container(width: 1, height: 50, color: Colors.grey.withAlpha(51)),
             Expanded(
               child: _buildStatItem(
                 icon: Icons.star,
-                value: _totalBookings > 0
-                    ? '${((_completedJobs / _totalBookings) * 100).round()}%'
-                    : '-',
-                label: 'Completion',
+                value: _rating > 0 ? _rating.toStringAsFixed(1) : '-',
+                label: 'Rating',
                 color: Colors.amber,
+              ),
+            ),
+            Container(width: 1, height: 50, color: Colors.grey.withAlpha(51)),
+            Expanded(
+              child: _buildStatItem(
+                icon: Icons.account_balance_wallet,
+                value: '₹${_totalEarnings.toStringAsFixed(0)}',
+                label: 'Earnings',
+                color: const Color(0xFF9C27B0),
               ),
             ),
           ],
@@ -361,22 +346,16 @@ class _ProfilePageState extends State<ProfilePage> {
   }) {
     return Column(
       children: [
-        Icon(icon, color: color, size: 24),
+        Icon(icon, color: color, size: 22),
         const SizedBox(height: 8),
         Text(
           value,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 4),
         Text(
           label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey[600],
-          ),
+          style: TextStyle(fontSize: 11, color: Colors.grey[600]),
           textAlign: TextAlign.center,
         ),
       ],
@@ -408,17 +387,17 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             _buildDivider(),
             _buildMenuItem(
-              icon: Icons.location_on_outlined,
-              title: 'Saved Addresses',
-              subtitle: 'Manage your locations',
-              onTap: () => _showComingSoon('Saved Addresses'),
+              icon: Icons.work_outline,
+              title: 'Work Details',
+              subtitle: 'Category, experience, rate',
+              onTap: () => _showComingSoon('Work Details'),
             ),
             _buildDivider(),
             _buildMenuItem(
               icon: Icons.payment_outlined,
-              title: 'Payment Methods',
-              subtitle: 'Manage payment options',
-              onTap: () => _showComingSoon('Payment Methods'),
+              title: 'Payment & Earnings',
+              subtitle: 'View transaction history',
+              onTap: () => _showComingSoon('Payment & Earnings'),
             ),
             _buildDivider(),
             _buildMenuItem(
@@ -426,13 +405,6 @@ class _ProfilePageState extends State<ProfilePage> {
               title: 'Notifications',
               subtitle: 'Configure alerts',
               onTap: () => _showComingSoon('Notifications'),
-            ),
-            _buildDivider(),
-            _buildMenuItem(
-              icon: Icons.security_outlined,
-              title: 'Privacy & Security',
-              subtitle: 'Password, 2FA settings',
-              onTap: () => _showComingSoon('Privacy & Security'),
             ),
             _buildDivider(),
             _buildMenuItem(
@@ -470,43 +442,23 @@ class _ProfilePageState extends State<ProfilePage> {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: const Color(0xFF2196F3).withAlpha(26),
+                color: const Color(0xFF1E3A5F).withAlpha(26),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(
-                icon,
-                color: const Color(0xFF2196F3),
-                size: 24,
-              ),
+              child: Icon(icon, color: const Color(0xFF1E3A5F), size: 24),
             ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey[600],
-                    ),
-                  ),
+                  Text(subtitle, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
                 ],
               ),
             ),
-            Icon(
-              Icons.arrow_forward_ios,
-              color: Colors.grey[400],
-              size: 16,
-            ),
+            Icon(Icons.arrow_forward_ios, color: Colors.grey[400], size: 16),
           ],
         ),
       ),
@@ -530,17 +482,12 @@ class _ProfilePageState extends State<ProfilePage> {
           icon: const Icon(Icons.logout, color: Colors.red),
           label: const Text(
             'Log Out',
-            style: TextStyle(
-              color: Colors.red,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
           ),
           style: OutlinedButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 14),
             side: const BorderSide(color: Colors.red),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         ),
       ),
@@ -565,25 +512,31 @@ class _ProfilePageState extends State<ProfilePage> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildNavItem(Icons.home_rounded, 'Home', false, () {
+              _buildNavItem(Icons.dashboard_rounded, 'Home', false, () {
                 Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(builder: (context) => const HomePage()),
+                  MaterialPageRoute(
+                    builder: (context) => WorkerDashboard(workerId: widget.workerId),
+                  ),
                 );
               }),
-              _buildNavItem(Icons.calendar_today_rounded, 'Bookings', false, () {
+              _buildNavItem(Icons.work_outline_rounded, 'Jobs', false, () {
                 Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(builder: (context) => const BookingHistoryPage()),
+                  MaterialPageRoute(
+                    builder: (context) => WorkerJobsScreen(workerId: widget.workerId),
+                  ),
                 );
               }),
               _buildNavItem(Icons.chat_bubble_outline_rounded, 'Messages', false, () {
                 Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(builder: (context) => const ChatListPage()),
+                  MaterialPageRoute(
+                    builder: (context) => WorkerChatListPage(workerId: widget.workerId),
+                  ),
                 );
               }),
-              _buildNavItem(Icons.person_rounded, 'Profile', true, () {}),
+              _buildNavItem(Icons.person_outline_rounded, 'Profile', true, () {}),
             ],
           ),
         ),
@@ -601,14 +554,14 @@ class _ProfilePageState extends State<ProfilePage> {
           vertical: 8,
         ),
         decoration: BoxDecoration(
-          color: isActive ? const Color(0xFF2196F3).withAlpha(26) : Colors.transparent,
+          color: isActive ? const Color(0xFF1E3A5F).withAlpha(26) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           children: [
             Icon(
               icon,
-              color: isActive ? const Color(0xFF2196F3) : Colors.grey,
+              color: isActive ? const Color(0xFF1E3A5F) : Colors.grey,
               size: 24,
             ),
             if (isActive) ...[
@@ -616,7 +569,7 @@ class _ProfilePageState extends State<ProfilePage> {
               Text(
                 label,
                 style: const TextStyle(
-                  color: Color(0xFF2196F3),
+                  color: Color(0xFF1E3A5F),
                   fontWeight: FontWeight.w600,
                   fontSize: 13,
                 ),
@@ -638,16 +591,15 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildEditProfileSheet() {
-    final nameController = TextEditingController(text: _userData['name'] ?? '');
-    final phoneController = TextEditingController(text: _userData['phone'] ?? '');
-    final locationController = TextEditingController(text: _userData['location'] ?? '');
-    final emailController = TextEditingController(text: _userData['email'] ?? '');
+    final nameController = TextEditingController(text: _workerData['name'] ?? '');
+    final phoneController = TextEditingController(text: _workerData['phone'] ?? '');
+    final locationController = TextEditingController(text: _workerData['location'] ?? '');
     bool isSaving = false;
 
     return StatefulBuilder(
       builder: (context, setSheetState) {
         return Container(
-          height: MediaQuery.of(context).size.height * 0.75,
+          height: MediaQuery.of(context).size.height * 0.65,
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.only(
@@ -657,7 +609,6 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           child: Column(
             children: [
-              // Handle bar
               Container(
                 margin: const EdgeInsets.only(top: 12),
                 width: 40,
@@ -667,7 +618,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              // Header
               Padding(
                 padding: const EdgeInsets.all(20),
                 child: Row(
@@ -675,10 +625,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   children: [
                     const Text(
                       'Edit Profile',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                     IconButton(
                       onPressed: () => Navigator.pop(context),
@@ -696,13 +643,6 @@ class _ProfilePageState extends State<ProfilePage> {
                         controller: nameController,
                         label: 'Full Name',
                         icon: Icons.person_outline,
-                      ),
-                      const SizedBox(height: 16),
-                      _buildTextField(
-                        controller: emailController,
-                        label: 'Email',
-                        icon: Icons.email_outlined,
-                        keyboardType: TextInputType.emailAddress,
                       ),
                       const SizedBox(height: 16),
                       _buildTextField(
@@ -727,7 +667,6 @@ class _ProfilePageState extends State<ProfilePage> {
                                   setSheetState(() => isSaving = true);
 
                                   final newName = nameController.text.trim();
-                                  final newEmail = emailController.text.trim();
                                   final newPhone = phoneController.text.trim();
                                   final newLocation = locationController.text.trim();
 
@@ -743,35 +682,22 @@ class _ProfilePageState extends State<ProfilePage> {
                                   }
 
                                   try {
-                                    // Update Firestore
-                                    if (_customerId != null) {
-                                      final updateData = <String, dynamic>{
-                                        'name': newName,
-                                        'phone': newPhone,
-                                      };
-                                      if (newEmail.isNotEmpty) {
-                                        updateData['email'] = newEmail;
-                                      }
-                                      if (newLocation.isNotEmpty) {
-                                        updateData['location'] = newLocation;
-                                      }
-                                      await _db
-                                          .collection('customers')
-                                          .doc(_customerId)
-                                          .update(updateData);
+                                    final updateData = <String, dynamic>{
+                                      'name': newName,
+                                      'phone': newPhone,
+                                    };
+                                    if (newLocation.isNotEmpty) {
+                                      updateData['location'] = newLocation;
                                     }
+                                    await _db
+                                        .collection('workers')
+                                        .doc(widget.workerId)
+                                        .update(updateData);
 
-                                    // Update SharedPreferences
-                                    final prefs = await SharedPreferences.getInstance();
-                                    await prefs.setString('customer_name', newName);
-                                    await prefs.setString('customer_phone', newPhone);
-
-                                    // Update local state
                                     setState(() {
-                                      _userData['name'] = newName;
-                                      _userData['email'] = newEmail;
-                                      _userData['phone'] = newPhone;
-                                      _userData['location'] = newLocation;
+                                      _workerData['name'] = newName;
+                                      _workerData['phone'] = newPhone;
+                                      _workerData['location'] = newLocation;
                                     });
 
                                     if (!context.mounted) return;
@@ -794,29 +720,21 @@ class _ProfilePageState extends State<ProfilePage> {
                                   }
                                 },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2196F3),
+                            backgroundColor: const Color(0xFF1E3A5F),
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             elevation: 0,
                           ),
                           child: isSaving
                               ? const SizedBox(
                                   width: 20,
                                   height: 20,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
-                                  ),
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                                 )
                               : const Text(
                                   'Save Changes',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                                 ),
                         ),
                       ),
@@ -843,7 +761,7 @@ class _ProfilePageState extends State<ProfilePage> {
       keyboardType: keyboardType,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, color: const Color(0xFF2196F3)),
+        prefixIcon: Icon(icon, color: const Color(0xFF1E3A5F)),
         filled: true,
         fillColor: Colors.grey[100],
         border: OutlineInputBorder(
@@ -852,7 +770,7 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF2196F3), width: 2),
+          borderSide: const BorderSide(color: Color(0xFF1E3A5F), width: 2),
         ),
       ),
     );
@@ -872,20 +790,17 @@ class _ProfilePageState extends State<ProfilePage> {
           children: [
             const Text(
               'Change Photo',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
             ListTile(
               leading: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2196F3).withAlpha(26),
+                  color: const Color(0xFF1E3A5F).withAlpha(26),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.photo_library, color: Color(0xFF2196F3)),
+                child: const Icon(Icons.photo_library, color: Color(0xFF1E3A5F)),
               ),
               title: const Text('Choose from Gallery'),
               onTap: () {
@@ -908,7 +823,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   Navigator.pop(context);
                   final messenger = ScaffoldMessenger.of(context);
                   final prefs = await SharedPreferences.getInstance();
-                  await prefs.remove('profile_image_base64');
+                  await prefs.remove('worker_profile_image_base64');
                   setState(() {
                     _profileImageBytes = null;
                   });
@@ -937,10 +852,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
-        final name = file.name;
-        final extension = name.split('.').last.toLowerCase();
-
+        final extension = file.name.split('.').last.toLowerCase();
         final imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
+
         if (!imageExtensions.contains(extension)) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
@@ -953,9 +867,8 @@ class _ProfilePageState extends State<ProfilePage> {
         }
 
         if (file.bytes != null) {
-          // Save to SharedPreferences as base64
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('profile_image_base64', base64Encode(file.bytes!));
+          await prefs.setString('worker_profile_image_base64', base64Encode(file.bytes!));
 
           setState(() {
             _profileImageBytes = file.bytes;
@@ -972,10 +885,7 @@ class _ProfilePageState extends State<ProfilePage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error picking image: $e'),
-          duration: const Duration(seconds: 2),
-        ),
+        SnackBar(content: Text('Error picking image: $e'), duration: const Duration(seconds: 2)),
       );
     }
   }
@@ -984,7 +894,7 @@ class _ProfilePageState extends State<ProfilePage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('$feature - Coming soon!'),
-        backgroundColor: const Color(0xFF2196F3),
+        backgroundColor: const Color(0xFF1E3A5F),
       ),
     );
   }
@@ -1000,7 +910,7 @@ class _ProfilePageState extends State<ProfilePage> {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF1565C0), Color(0xFF42A5F5)],
+                  colors: [Color(0xFF1E3A5F), Color(0xFF2D5478)],
                 ),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -1014,20 +924,14 @@ class _ProfilePageState extends State<ProfilePage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Your AI-powered service marketplace',
-              style: TextStyle(fontSize: 16),
-            ),
+            const Text('Your AI-powered service marketplace', style: TextStyle(fontSize: 16)),
             const SizedBox(height: 16),
             _buildAboutRow('Version', '1.0.0'),
             _buildAboutRow('Build', '2026.02'),
             const SizedBox(height: 16),
             Text(
-              'Find trusted professionals for all your home service needs.',
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey[600],
-              ),
+              'Connect with customers and grow your business.',
+              style: TextStyle(fontSize: 13, color: Colors.grey[600]),
             ),
           ],
         ),
@@ -1064,22 +968,14 @@ class _ProfilePageState extends State<ProfilePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
+            child: Text('Cancel', style: TextStyle(color: Colors.grey[600])),
           ),
           ElevatedButton(
             onPressed: () async {
-              // Clear SharedPreferences
               final prefs = await SharedPreferences.getInstance();
-              await prefs.remove('customer_id');
-              await prefs.remove('customer_name');
-              await prefs.remove('customer_phone');
-              await prefs.remove('profile_image_base64');
+              await prefs.remove('worker_profile_image_base64');
 
               if (!context.mounted) return;
-              // Navigate to role selection (clear stack)
               Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
@@ -1089,9 +985,7 @@ class _ProfilePageState extends State<ProfilePage> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             child: const Text('Log Out'),
           ),
