@@ -2,7 +2,8 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:ui' as ui;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import '../services/worker_service.dart';
 import '../widgets/notification_overlay.dart';
@@ -27,6 +28,7 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
   bool _isLoading = true;
   int _selectedNavIndex = 0;
   Uint8List? _profileImageBytes;
+  List<Map<String, dynamic>> _recentBookings = [];
 
   @override
   void initState() {
@@ -40,20 +42,53 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
   Future<void> _loadProfile() async {
     final profile = await _workerService.getWorkerProfile();
 
-    // Load saved profile image
-    final prefs = await SharedPreferences.getInstance();
-    final savedImage = prefs.getString('worker_profile_image_base64');
+    // Load profile image from Firestore
     Uint8List? profileImage;
-    if (savedImage != null) {
-      profileImage = base64Decode(savedImage);
+    if (widget.workerId != null) {
+      final doc = await FirebaseFirestore.instance
+          .collection('workers')
+          .doc(widget.workerId)
+          .get();
+      if (doc.exists) {
+        final savedImage = doc.data()?['profileImageBase64'];
+        if (savedImage != null && savedImage is String && savedImage.isNotEmpty) {
+          profileImage = base64Decode(savedImage);
+        }
+      }
+    }
+
+    // Load recent bookings from Firestore
+    List<Map<String, dynamic>> recentBookings = [];
+    if (widget.workerId != null) {
+      final bookingsSnapshot = await FirebaseFirestore.instance
+          .collection('bookings')
+          .where('workerId', isEqualTo: widget.workerId)
+          .orderBy('createdAt', descending: true)
+          .limit(5)
+          .get();
+
+      for (final doc in bookingsSnapshot.docs) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        recentBookings.add(data);
+      }
     }
 
     setState(() {
       _workerProfile = profile['worker'] ?? {};
       _stats = profile['stats'] ?? {};
       _profileImageBytes = profileImage;
+      _recentBookings = recentBookings;
       _isLoading = false;
     });
+  }
+
+  Future<Uint8List> _compressImage(Uint8List bytes, int maxSize) async {
+    final codec = await ui.instantiateImageCodec(bytes, targetWidth: maxSize, targetHeight: maxSize);
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
   }
 
   Future<void> _pickProfileImage() async {
@@ -80,12 +115,16 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
           return;
         }
 
-        if (file.bytes != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('worker_profile_image_base64', base64Encode(file.bytes!));
+        if (file.bytes != null && widget.workerId != null) {
+          final compressed = await _compressImage(file.bytes!, 200);
+          final base64Image = base64Encode(compressed);
+          await FirebaseFirestore.instance
+              .collection('workers')
+              .doc(widget.workerId)
+              .update({'profileImageBase64': base64Image});
 
           setState(() {
-            _profileImageBytes = file.bytes;
+            _profileImageBytes = compressed;
           });
         }
       }
@@ -449,12 +488,19 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            color,
+            color.withAlpha(200),
+          ],
+        ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha(13),
-            blurRadius: 10,
+            color: color.withAlpha(60),
+            blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
@@ -464,10 +510,10 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: color.withAlpha(26),
+              color: Colors.white.withAlpha(40),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: color, size: 24),
+            child: Icon(icon, color: Colors.white, size: 24),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -479,14 +525,14 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
                   style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF1E3A5F),
+                    color: Colors.white,
                   ),
                 ),
                 Text(
                   title,
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.grey[600],
+                    color: Colors.white.withAlpha(200),
                   ),
                 ),
               ],
@@ -601,13 +647,16 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: color.withAlpha(15),
           borderRadius: BorderRadius.circular(16),
+          border: Border(
+            left: BorderSide(color: color, width: 3),
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withAlpha(13),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+              color: Colors.black.withAlpha(10),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
             ),
           ],
         ),
@@ -617,7 +666,7 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: color.withAlpha(26),
+                color: color.withAlpha(30),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: color, size: 24),
@@ -625,10 +674,10 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
             const SizedBox(height: 12),
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF1E3A5F),
+                color: color.withAlpha(220),
               ),
             ),
             const SizedBox(height: 2),
@@ -643,6 +692,42 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
         ),
       ),
     );
+  }
+
+  String _timeAgo(dynamic timestamp) {
+    if (timestamp == null) return '';
+    DateTime date;
+    if (timestamp is Timestamp) {
+      date = timestamp.toDate();
+    } else {
+      return '';
+    }
+    final diff = DateTime.now().difference(date);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  IconData _getStatusIcon(String status) {
+    switch (status) {
+      case 'completed': return Icons.check_circle_outline;
+      case 'confirmed': return Icons.thumb_up_outlined;
+      case 'pending': return Icons.schedule;
+      case 'cancelled': return Icons.cancel_outlined;
+      default: return Icons.work_outline;
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'completed': return const Color(0xFF4CAF50);
+      case 'confirmed': return const Color(0xFF2196F3);
+      case 'pending': return const Color(0xFFFF9800);
+      case 'cancelled': return Colors.red;
+      default: return const Color(0xFF9C27B0);
+    }
   }
 
   Widget _buildRecentActivity() {
@@ -663,7 +748,9 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
                 ),
               ),
               TextButton(
-                onPressed: () {},
+                onPressed: () {
+                  setState(() => _selectedNavIndex = 1);
+                },
                 child: const Text(
                   'See All',
                   style: TextStyle(color: Color(0xFF1E3A5F)),
@@ -684,33 +771,43 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
                 ),
               ],
             ),
-            child: Column(
-              children: [
-                _buildActivityItem(
-                  'New Job Request',
-                  'Plumbing repair in Downtown',
-                  '2 mins ago',
-                  Icons.work_outline,
-                  const Color(0xFF2196F3),
-                  isFirst: true,
-                ),
-                _buildActivityItem(
-                  'Payment Received',
-                  '₹850 for electrical work',
-                  '1 hour ago',
-                  Icons.payments_outlined,
-                  const Color(0xFF4CAF50),
-                ),
-                _buildActivityItem(
-                  'Job Completed',
-                  'AC repair at Block 5',
-                  '3 hours ago',
-                  Icons.check_circle_outline,
-                  const Color(0xFF9C27B0),
-                  isLast: true,
-                ),
-              ],
-            ),
+            clipBehavior: Clip.antiAlias,
+            child: _recentBookings.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          Icon(Icons.inbox_outlined, size: 48, color: Colors.grey[300]),
+                          const SizedBox(height: 12),
+                          Text(
+                            'No recent activity',
+                            style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : Column(
+                    children: List.generate(_recentBookings.length, (index) {
+                      final booking = _recentBookings[index];
+                      final status = booking['status'] ?? 'pending';
+                      final customerName = booking['customerName'] ?? 'Customer';
+                      final service = booking['searchQuery'] ?? booking['category'] ?? 'Service';
+                      final time = _timeAgo(booking['createdAt']);
+                      final statusLabel = status[0].toUpperCase() + status.substring(1);
+
+                      return _buildActivityItem(
+                        '$statusLabel - $customerName',
+                        service,
+                        time,
+                        _getStatusIcon(status),
+                        _getStatusColor(status),
+                        isFirst: index == 0,
+                        isLast: index == _recentBookings.length - 1,
+                      );
+                    }),
+                  ),
           ),
         ],
       ),
@@ -785,6 +882,9 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
+        border: const Border(
+          top: BorderSide(color: Color(0xFF1E3A5F), width: 2),
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withAlpha(13),
@@ -847,14 +947,14 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
           vertical: 8,
         ),
         decoration: BoxDecoration(
-          color: isActive ? const Color(0xFF1E3A5F).withAlpha(26) : Colors.transparent,
+          color: isActive ? const Color(0xFF1E3A5F) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           children: [
             Icon(
               icon,
-              color: isActive ? const Color(0xFF1E3A5F) : Colors.grey,
+              color: isActive ? Colors.white : Colors.grey[400],
               size: 24,
             ),
             if (isActive) ...[
@@ -862,7 +962,7 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
               Text(
                 label,
                 style: const TextStyle(
-                  color: Color(0xFF1E3A5F),
+                  color: Colors.white,
                   fontWeight: FontWeight.w600,
                   fontSize: 13,
                 ),

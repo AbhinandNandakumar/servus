@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:async';
+import 'dart:ui' as ui;
 import 'package:http/http.dart' as http;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../services/location_service.dart';
@@ -38,6 +39,9 @@ class _NearbyWorkersMapPageState extends State<NearbyWorkersMapPage> {
   double _userLng = 77.5946;
   bool _hasUserLocation = false;
 
+  // Custom marker icon for user location
+  BitmapDescriptor? _userMarkerIcon;
+
   // Selected worker for bottom sheet
   Map<String, dynamic>? _selectedWorker;
 
@@ -53,8 +57,37 @@ class _NearbyWorkersMapPageState extends State<NearbyWorkersMapPage> {
     super.dispose();
   }
 
+  Future<BitmapDescriptor> _createCustomMarker(Color color) async {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    const size = 48.0;
+
+    // Draw the pin head (circle)
+    final paint = Paint()..color = color;
+    canvas.drawCircle(const Offset(size / 2, size / 3), size / 3, paint);
+
+    // Draw the pin point (triangle)
+    final path = Path()
+      ..moveTo(size / 2 - size / 5, size / 3)
+      ..lineTo(size / 2, size - 4)
+      ..lineTo(size / 2 + size / 5, size / 3)
+      ..close();
+    canvas.drawPath(path, paint);
+
+    // Draw white inner circle
+    final innerPaint = Paint()..color = Colors.white;
+    canvas.drawCircle(const Offset(size / 2, size / 3), size / 6, innerPaint);
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(size.toInt(), size.toInt());
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+
+    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+  }
+
   Future<void> _initializeMap() async {
     await _locationService.initialize();
+    _userMarkerIcon = await _createCustomMarker(const Color(0xFF2196F3));
 
     // Get user's location FIRST before showing the map
     await _getUserLocation();
@@ -135,6 +168,7 @@ class _NearbyWorkersMapPageState extends State<NearbyWorkersMapPage> {
         Marker(
           markerId: const MarkerId('user_location'),
           position: LatLng(_userLat, _userLng),
+          icon: _userMarkerIcon ?? BitmapDescriptor.defaultMarker,
           infoWindow: const InfoWindow(
             title: '📍 You are here',
             snippet: 'Your current location',
@@ -271,56 +305,57 @@ class _NearbyWorkersMapPageState extends State<NearbyWorkersMapPage> {
                     ],
                   ),
                 )
-              : Stack(
+              : Column(
                   children: [
-                    // Google Map
-                    GoogleMap(
-                      initialCameraPosition: CameraPosition(
-                        target: LatLng(_userLat, _userLng),
-                        zoom: 12,
+                    // Google Map (takes remaining space)
+                    Expanded(
+                      child: Stack(
+                        children: [
+                          GoogleMap(
+                            initialCameraPosition: CameraPosition(
+                              target: LatLng(_userLat, _userLng),
+                              zoom: 12,
+                            ),
+                            markers: _markers,
+                            myLocationEnabled: true,
+                            myLocationButtonEnabled: false,
+                            zoomControlsEnabled: true,
+                            mapToolbarEnabled: false,
+                            scrollGesturesEnabled: true,
+                            zoomGesturesEnabled: true,
+                            onMapCreated: (controller) {
+                              _mapController = controller;
+                              _createMarkers();
+                            },
+                            onTap: (_) {
+                              setState(() {
+                                _selectedWorker = null;
+                              });
+                            },
+                          ),
+
+                          // Worker count chip at top
+                          Positioned(
+                            top: 16,
+                            left: 16,
+                            right: 16,
+                            child: _buildWorkerCountChip(),
+                          ),
+
+                          // Selected worker card overlay
+                          if (_selectedWorker != null)
+                            Positioned(
+                              bottom: 0,
+                              left: 0,
+                              right: 0,
+                              child: _buildSelectedWorkerCard(),
+                            ),
+                        ],
                       ),
-                      markers: _markers,
-                      myLocationEnabled: true,
-                      myLocationButtonEnabled: false,
-                      zoomControlsEnabled: true,
-                      mapToolbarEnabled: false,
-                      scrollGesturesEnabled: true,
-                      zoomGesturesEnabled: true,
-                      onMapCreated: (controller) {
-                        _mapController = controller;
-                        _createMarkers();
-                      },
-                      onTap: (_) {
-                        // Deselect worker when tapping on map
-                        setState(() {
-                          _selectedWorker = null;
-                        });
-                      },
                     ),
 
-                    // Worker count chip at top
-                    Positioned(
-                      top: 16,
-                      left: 16,
-                      right: 16,
-                      child: _buildWorkerCountChip(),
-                    ),
-
-                    // Bottom sheet for selected worker or worker list
-                    if (_selectedWorker != null)
-                      Positioned(
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        child: _buildSelectedWorkerCard(),
-                      )
-                    else
-                      Positioned(
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        child: _buildWorkerListSheet(),
-                      ),
+                    // Worker list - outside the map, no gesture conflict
+                    _buildWorkerListSheet(),
                   ],
                 ),
     );
@@ -412,7 +447,20 @@ class _NearbyWorkersMapPageState extends State<NearbyWorkersMapPage> {
     final rating = (worker['rating'] ?? 0).toDouble();
     final reviewCount = worker['reviews'] ?? 0;
     final hourlyRate = worker['hourly_rate'] ?? worker['rate'] ?? 0;
-    final distance = worker['distance'] ?? 'N/A';
+
+    // Calculate distance from user to worker
+    String distance = 'N/A';
+    final workerLat = worker['latitude'];
+    final workerLng = worker['longitude'];
+    if (_hasUserLocation && workerLat != null && workerLng != null) {
+      final km = _locationService.calculateDistance(
+        _userLat, _userLng,
+        workerLat.toDouble(), workerLng.toDouble(),
+      );
+      distance = km < 1
+          ? '${(km * 1000).round()} m'
+          : '${km.toStringAsFixed(1)} km';
+    }
 
     return Container(
       margin: const EdgeInsets.all(16),
@@ -597,31 +645,20 @@ class _NearbyWorkersMapPageState extends State<NearbyWorkersMapPage> {
 
   Widget _buildWorkerListSheet() {
     return Container(
-      height: 200,
+      height: 180,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withAlpha(25),
-            blurRadius: 20,
-            offset: const Offset(0, -5),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
           ),
         ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Drag handle
-          Container(
-            width: 40,
-            height: 4,
-            margin: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
 
           // Header
           Padding(

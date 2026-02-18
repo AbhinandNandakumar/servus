@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
@@ -40,12 +41,6 @@ class _ProfilePageState extends State<ProfilePage> {
     final prefs = await SharedPreferences.getInstance();
     _customerId = prefs.getString('customer_id');
 
-    // Load saved profile image
-    final savedImage = prefs.getString('profile_image_base64');
-    if (savedImage != null) {
-      _profileImageBytes = base64Decode(savedImage);
-    }
-
     if (_customerId == null) {
       setState(() => _isLoading = false);
       return;
@@ -57,6 +52,12 @@ class _ProfilePageState extends State<ProfilePage> {
       if (doc.exists) {
         _userData = doc.data()!;
         _userData['id'] = doc.id;
+
+        // Load profile image from Firestore
+        final savedImage = _userData['profileImageBase64'];
+        if (savedImage != null && savedImage is String && savedImage.isNotEmpty) {
+          _profileImageBytes = base64Decode(savedImage);
+        }
       } else {
         // Fallback to SharedPreferences data
         _userData = {
@@ -907,8 +908,11 @@ class _ProfilePageState extends State<ProfilePage> {
                 onTap: () async {
                   Navigator.pop(context);
                   final messenger = ScaffoldMessenger.of(context);
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.remove('profile_image_base64');
+                  if (_customerId != null) {
+                    await _db.collection('customers').doc(_customerId).update({
+                      'profileImageBase64': FieldValue.delete(),
+                    });
+                  }
                   setState(() {
                     _profileImageBytes = null;
                   });
@@ -925,6 +929,14 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
       ),
     );
+  }
+
+  Future<Uint8List> _compressImage(Uint8List bytes, int maxSize) async {
+    final codec = await ui.instantiateImageCodec(bytes, targetWidth: maxSize, targetHeight: maxSize);
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
   }
 
   Future<void> _pickProfileImage() async {
@@ -953,12 +965,19 @@ class _ProfilePageState extends State<ProfilePage> {
         }
 
         if (file.bytes != null) {
-          // Save to SharedPreferences as base64
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('profile_image_base64', base64Encode(file.bytes!));
+          // Compress image before saving to Firestore
+          final compressed = await _compressImage(file.bytes!, 200);
+
+          // Save to Firestore as base64
+          final base64Image = base64Encode(compressed);
+          if (_customerId != null) {
+            await _db.collection('customers').doc(_customerId).update({
+              'profileImageBase64': base64Image,
+            });
+          }
 
           setState(() {
-            _profileImageBytes = file.bytes;
+            _profileImageBytes = compressed;
           });
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1076,7 +1095,6 @@ class _ProfilePageState extends State<ProfilePage> {
               await prefs.remove('customer_id');
               await prefs.remove('customer_name');
               await prefs.remove('customer_phone');
-              await prefs.remove('profile_image_base64');
 
               if (!context.mounted) return;
               // Navigate to role selection (clear stack)

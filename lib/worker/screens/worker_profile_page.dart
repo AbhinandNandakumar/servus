@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'dart:ui' as ui;
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/services.dart';
 import '../../main.dart';
+import '../../widgets/location_picker.dart';
 import '../services/worker_service.dart';
 import 'worker_dashboard.dart';
 import 'worker_jobs.dart';
@@ -40,20 +41,18 @@ class _WorkerProfilePageState extends State<WorkerProfilePage> {
   }
 
   Future<void> _loadProfile() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    // Load saved profile image
-    final savedImage = prefs.getString('worker_profile_image_base64');
-    if (savedImage != null) {
-      _profileImageBytes = base64Decode(savedImage);
-    }
-
     try {
       // Load worker document from Firestore
       final doc = await _db.collection('workers').doc(widget.workerId).get();
       if (doc.exists) {
         _workerData = doc.data()!;
         _workerData['id'] = doc.id;
+
+        // Load profile image from Firestore
+        final savedImage = _workerData['profileImageBase64'];
+        if (savedImage != null && savedImage is String && savedImage.isNotEmpty) {
+          _profileImageBytes = base64Decode(savedImage);
+        }
       }
 
       // Load job stats from bookings
@@ -991,6 +990,8 @@ class _WorkerProfilePageState extends State<WorkerProfilePage> {
     final nameController = TextEditingController(text: _workerData['name'] ?? '');
     final phoneController = TextEditingController(text: _workerData['phone'] ?? '');
     final locationController = TextEditingController(text: _workerData['location'] ?? '');
+    double? selectedLat = _workerData['latitude']?.toDouble();
+    double? selectedLng = _workerData['longitude']?.toDouble();
     bool isSaving = false;
 
     return StatefulBuilder(
@@ -1049,10 +1050,17 @@ class _WorkerProfilePageState extends State<WorkerProfilePage> {
                         keyboardType: TextInputType.phone,
                       ),
                       const SizedBox(height: 16),
-                      _buildTextField(
-                        controller: locationController,
-                        label: 'Location',
-                        icon: Icons.location_on_outlined,
+                      LocationPicker(
+                        initialAddress: locationController.text.isNotEmpty
+                            ? locationController.text
+                            : null,
+                        onLocationSelected: (address, lat, lng) {
+                          setSheetState(() {
+                            locationController.text = address;
+                            selectedLat = lat;
+                            selectedLng = lng;
+                          });
+                        },
                       ),
                       const SizedBox(height: 24),
                       SizedBox(
@@ -1085,6 +1093,10 @@ class _WorkerProfilePageState extends State<WorkerProfilePage> {
                                     };
                                     if (newLocation.isNotEmpty) {
                                       updateData['location'] = newLocation;
+                                      if (selectedLat != null && selectedLng != null) {
+                                        updateData['latitude'] = selectedLat;
+                                        updateData['longitude'] = selectedLng;
+                                      }
                                     }
                                     await _db
                                         .collection('workers')
@@ -1219,8 +1231,9 @@ class _WorkerProfilePageState extends State<WorkerProfilePage> {
                 onTap: () async {
                   Navigator.pop(context);
                   final messenger = ScaffoldMessenger.of(context);
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.remove('worker_profile_image_base64');
+                  await _db.collection('workers').doc(widget.workerId).update({
+                    'profileImageBase64': FieldValue.delete(),
+                  });
                   setState(() {
                     _profileImageBytes = null;
                   });
@@ -1237,6 +1250,14 @@ class _WorkerProfilePageState extends State<WorkerProfilePage> {
         ),
       ),
     );
+  }
+
+  Future<Uint8List> _compressImage(Uint8List bytes, int maxSize) async {
+    final codec = await ui.instantiateImageCodec(bytes, targetWidth: maxSize, targetHeight: maxSize);
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
   }
 
   Future<void> _pickProfileImage() async {
@@ -1264,11 +1285,15 @@ class _WorkerProfilePageState extends State<WorkerProfilePage> {
         }
 
         if (file.bytes != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('worker_profile_image_base64', base64Encode(file.bytes!));
+          // Compress and save to Firestore
+          final compressed = await _compressImage(file.bytes!, 200);
+          final base64Image = base64Encode(compressed);
+          await _db.collection('workers').doc(widget.workerId).update({
+            'profileImageBase64': base64Image,
+          });
 
           setState(() {
-            _profileImageBytes = file.bytes;
+            _profileImageBytes = compressed;
           });
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1369,9 +1394,6 @@ class _WorkerProfilePageState extends State<WorkerProfilePage> {
           ),
           ElevatedButton(
             onPressed: () async {
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.remove('worker_profile_image_base64');
-
               if (!context.mounted) return;
               Navigator.pushAndRemoveUntil(
                 context,

@@ -42,8 +42,9 @@ class _HomePageState extends State<HomePage> {
     final name = prefs.getString('customer_name') ?? 'User';
     var location = 'Set your location';
 
-    // Try loading location from Firestore
+    // Load location and profile image from Firestore
     final customerId = prefs.getString('customer_id');
+    Uint8List? profileImage;
     if (customerId != null) {
       try {
         final doc = await FirebaseFirestore.instance
@@ -55,15 +56,13 @@ class _HomePageState extends State<HomePage> {
           if (data['location'] != null && (data['location'] as String).isNotEmpty) {
             location = data['location'];
           }
+          // Load profile image from Firestore
+          final savedImage = data['profileImageBase64'];
+          if (savedImage != null && savedImage is String && savedImage.isNotEmpty) {
+            profileImage = base64Decode(savedImage);
+          }
         }
       } catch (_) {}
-    }
-
-    // Load saved profile image
-    final savedImage = prefs.getString('profile_image_base64');
-    Uint8List? profileImage;
-    if (savedImage != null) {
-      profileImage = base64Decode(savedImage);
     }
 
     setState(() {
