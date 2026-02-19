@@ -8,8 +8,9 @@ from datetime import datetime
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 # NOTE: Heavy imports (torch, sentence_transformers, pandas, firebase, web3, genai)
@@ -164,6 +165,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def check_ready(request: Request, call_next):
+    if not _ready and request.url.path != "/health":
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Server is still starting up. Please try again in a minute."}
+        )
+    return await call_next(request)
 
 @app.get("/health")
 def health_check():
@@ -327,9 +337,6 @@ def generate_review_summary(worker_name: str, reviews: list) -> str:
 # -------------------------------
 @app.post("/analyze")
 async def analyze(problem_input: ProblemInput):
-    if not _ready:
-        return {"detected_category": "general_contractor", "available_workers": [], "quick_fix": "Our AI is still warming up. Please try again in a minute.", "status": "loading"}
-
     query = problem_input.problem.lower().strip()
 
     # Embed query

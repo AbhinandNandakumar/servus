@@ -184,7 +184,11 @@ class _HomePageState extends State<HomePage> {
         });
 
         // Show error dialog
-        _showErrorDialog('Error: ${response.statusCode}');
+        if (response.statusCode == 503) {
+          _showErrorDialog('Server is still starting up. Please try again in a minute.');
+        } else {
+          _showErrorDialog('Error: ${response.statusCode}');
+        }
       }
     } catch (e) {
       setState(() {

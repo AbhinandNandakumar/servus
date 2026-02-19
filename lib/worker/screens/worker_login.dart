@@ -64,6 +64,13 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen>
         headers: {'Content-Type': 'application/json'},
       );
 
+      if (response.statusCode == 503) {
+        if (mounted) {
+          _showSnackBar('Server is starting up. Please try again in a minute.', isError: true);
+        }
+        return;
+      }
+
       final data = json.decode(response.body);
 
       if (data['success'] == true) {
