@@ -1,12 +1,13 @@
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 import json
+import math
 import hashlib
 import threading
 from datetime import datetime
-
-from dotenv import load_dotenv
-load_dotenv()
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,7 +15,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 # NOTE: Heavy imports (torch, sentence_transformers, pandas, firebase, web3, genai)
-# are deferred to _init_all() so uvicorn can bind the port immediately.
+# are deferred to background thread so uvicorn can bind the port immediately on Render.
 
 # -------------------------------
 # Global state (loaded in background)
@@ -22,7 +23,7 @@ from pydantic import BaseModel
 data = None
 model = None
 torch = None
-util = None  # sentence_transformers.util
+util = None
 firestore = None
 gemini_model = None
 db = None
@@ -30,17 +31,15 @@ w3 = None
 blockchain_account = None
 WALLET_ADDRESS = None
 
-def _init_all():
-    """Initialize all heavy services in background thread."""
-    global data, model, torch, util, firestore, gemini_model, db, w3, blockchain_account, WALLET_ADDRESS
+# Two-phase readiness:
+# _ready = True  → Firebase/Gemini/Web3 loaded → login, bookings, etc. work
+# _ml_ready = True → ML model loaded → /analyze works
+_ready = False
+_ml_ready = False
 
-    import pandas as pd
-    import torch as torch_mod
-    from sentence_transformers import SentenceTransformer
-    from sentence_transformers import util as st_util
-
-    torch = torch_mod
-    util = st_util
+def _init_essential():
+    """Phase 1: Firebase, Gemini, Web3 — lightweight, loads fast."""
+    global firestore, gemini_model, db, w3, blockchain_account, WALLET_ADDRESS
 
     import google.generativeai as genai
     import firebase_admin
@@ -50,21 +49,10 @@ def _init_all():
 
     firestore = _firestore
 
-    # Load dataset
-    data = pd.read_csv("service_intents.csv")
-    data['text'] = data['text'].str.lower()
-
-    # Load Sentence Transformer
-    print("⚡ Loading ML model...")
-    model = SentenceTransformer("all-mpnet-base-v2")
-
-    print("⚡ Generating embeddings for dataset...")
-    data['embeddings'] = list(model.encode(data['text'], convert_to_tensor=True))
-    print("✅ Embeddings ready!")
-
     # Gemini
     genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
     gemini_model = genai.GenerativeModel("models/gemini-2.5-flash")
+    print("✅ Gemini ready!")
 
     # Firebase
     if not firebase_admin._apps:
@@ -100,16 +88,56 @@ def _init_all():
         WALLET_ADDRESS = None
         print("⚠️ No blockchain private key configured")
 
-_ready = False
+
+def _init_ml():
+    """Phase 2: ML model — heavy, may take minutes. Other features work without it."""
+    global data, model, torch, util
+
+    import pandas as pd
+    import torch as torch_mod
+    from sentence_transformers import SentenceTransformer
+    from sentence_transformers import util as st_util
+
+    torch = torch_mod
+    util = st_util
+
+    # Load dataset
+    data = pd.read_csv("service_intents.csv")
+    data['text'] = data['text'].str.lower()
+
+    # Load Sentence Transformer
+    model_name = "all-mpnet-base-v2"
+    print("⚡ Loading ML model...")
+    model = SentenceTransformer(model_name)
+
+    print("⚡ Generating embeddings for dataset...")
+    data['embeddings'] = list(model.encode(data['text'], convert_to_tensor=True))
+    print("✅ ML model & embeddings ready!")
+
 
 def _init_in_background():
-    global _ready
+    global _ready, _ml_ready
+
+    # Phase 1: Essential services (fast)
     try:
-        _init_all()
+        _init_essential()
         _ready = True
+        print("✅ Essential services ready (Firebase, Gemini, Web3)!")
+    except Exception as e:
+        print(f"❌ Essential init failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return
+
+    # Phase 2: ML model (slow — if it fails, login/bookings still work)
+    try:
+        _init_ml()
+        _ml_ready = True
         print("✅ All services ready!")
     except Exception as e:
-        print(f"❌ Init failed: {e}")
+        print(f"⚠️ ML model failed to load: {e}")
+        import traceback
+        traceback.print_exc()
 
 threading.Thread(target=_init_in_background, daemon=True).start()
 
@@ -168,6 +196,7 @@ app.add_middleware(
 
 @app.middleware("http")
 async def check_ready(request: Request, call_next):
+    """Block requests until Firebase is ready (except /health)."""
     if not _ready and request.url.path != "/health":
         return JSONResponse(
             status_code=503,
@@ -177,7 +206,7 @@ async def check_ready(request: Request, call_next):
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "ready": _ready}
+    return {"status": "ok", "ready": _ready, "ml_ready": _ml_ready}
 
 # Input model
 class ProblemInput(BaseModel):
@@ -337,6 +366,14 @@ def generate_review_summary(worker_name: str, reviews: list) -> str:
 # -------------------------------
 @app.post("/analyze")
 async def analyze(problem_input: ProblemInput):
+    if not _ml_ready:
+        return {
+            "detected_category": "general_contractor",
+            "available_workers": [],
+            "quick_fix": "AI model is still loading. Please try again in a minute.",
+            "status": "ml_loading"
+        }
+
     query = problem_input.problem.lower().strip()
 
     # Embed query
@@ -783,8 +820,6 @@ async def notify_new_booking(input: BookingNotificationInput):
 # -------------------------------
 # Nearby Workers Endpoint
 # -------------------------------
-import math
-
 def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calculate distance between two coordinates using Haversine formula (returns km)"""
     R = 6371  # Earth's radius in km
@@ -902,7 +937,7 @@ async def verify_aadhaar(worker_id: str, input: AadhaarVerificationInput):
                 'data': w3.to_bytes(text=verification_hash),
             }
 
-            signed_tx = w3.eth.account.sign_transaction(tx, BLOCKCHAIN_PRIVATE_KEY)
+            signed_tx = w3.eth.account.sign_transaction(tx, os.getenv("BLOCKCHAIN_PRIVATE_KEY", ""))
             tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
             tx_hash_hex = tx_hash.hex()
 
