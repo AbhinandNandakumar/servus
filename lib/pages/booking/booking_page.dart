@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/firestore_service.dart';
 import '../../services/api_config.dart';
+import '../../widgets/location_picker.dart';
 
 class BookingPage extends StatefulWidget {
   final Map<String, dynamic> worker;
@@ -37,6 +38,11 @@ class _BookingPageState extends State<BookingPage> {
   // Availability state
   Map<String, dynamic> _workerAvailability = {};
   bool _isLoadingAvailability = true;
+
+  // Location state
+  String? _customerAddress;
+  double? _customerLat;
+  double? _customerLng;
 
   static const List<String> _monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -254,6 +260,11 @@ class _BookingPageState extends State<BookingPage> {
                     _buildTimeSelection(),
 
                     const SizedBox(height: 24),
+
+                    const SizedBox(height: 24),
+
+                    // Location
+                    _buildLocationSection(),
 
                     // Booking Summary
                     if (_selectedTimeIndex >= 0)
@@ -599,6 +610,62 @@ class _BookingPageState extends State<BookingPage> {
     );
   }
 
+  Widget _buildLocationSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Your Location',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          if (_customerAddress != null)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.green.shade300),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.location_on, color: Colors.green[700], size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _customerAddress!,
+                      style: TextStyle(fontSize: 13, color: Colors.green[800]),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => setState(() {
+                      _customerAddress = null;
+                      _customerLat = null;
+                      _customerLng = null;
+                    }),
+                    child: Icon(Icons.close, size: 18, color: Colors.green[700]),
+                  ),
+                ],
+              ),
+            )
+          else
+            LocationPicker(
+              onLocationSelected: (address, lat, lng) {
+                setState(() {
+                  _customerAddress = address;
+                  _customerLat = lat;
+                  _customerLng = lng;
+                });
+              },
+            ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBookingSummary(int hourlyRate, double bookingFee, double totalEstimate) {
     // Create a service title based on detected category
     String serviceTitle = 'Service Request';
@@ -804,6 +871,7 @@ class _BookingPageState extends State<BookingPage> {
   }
 
   Widget _buildBottomSheet(double totalEstimate) {
+    final bool canConfirm = !_isBooking && _customerAddress != null;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -845,7 +913,7 @@ class _BookingPageState extends State<BookingPage> {
             Expanded(
               flex: 3,
               child: ElevatedButton(
-                onPressed: _isBooking ? null : _confirmBooking,
+                onPressed: canConfirm ? _confirmBooking : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF2196F3),
                   foregroundColor: Colors.white,
@@ -906,6 +974,11 @@ class _BookingPageState extends State<BookingPage> {
       return;
     }
 
+    if (_customerAddress == null) {
+      _showErrorSnackbar('Please select your location so the worker knows where to go.');
+      return;
+    }
+
     setState(() {
       _isBooking = true;
     });
@@ -932,6 +1005,9 @@ class _BookingPageState extends State<BookingPage> {
       'bookingDate': bookingDate.toIso8601String(),
       'hourlyRate': widget.worker['hourly_rate'] ?? widget.worker['rate'] ?? 0,
       'status': 'pending',
+      'customerAddress': _customerAddress ?? '',
+      'customerLat': _customerLat ?? 0.0,
+      'customerLng': _customerLng ?? 0.0,
     };
 
     print('DEBUG: Creating booking with data: $bookingData');

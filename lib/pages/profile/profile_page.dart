@@ -10,6 +10,7 @@ import '../chat/chat_list_page.dart';
 import '../home_page.dart';
 import '../../main.dart';
 import 'payment_methods_page.dart';
+import '../../widgets/location_picker.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -667,6 +668,8 @@ class _ProfilePageState extends State<ProfilePage> {
         TextEditingController(text: _userData['location'] ?? '');
     final emailController =
         TextEditingController(text: _userData['email'] ?? '');
+    double? selectedLat = (_userData['latitude'] as num?)?.toDouble();
+    double? selectedLng = (_userData['longitude'] as num?)?.toDouble();
     bool isSaving = false;
 
     return StatefulBuilder(
@@ -737,10 +740,17 @@ class _ProfilePageState extends State<ProfilePage> {
                         keyboardType: TextInputType.phone,
                       ),
                       const SizedBox(height: 16),
-                      _buildTextField(
-                        controller: locationController,
-                        label: 'Location',
-                        icon: Icons.location_on_outlined,
+                      LocationPicker(
+                        initialAddress: locationController.text.isNotEmpty
+                            ? locationController.text
+                            : null,
+                        onLocationSelected: (address, lat, lng) {
+                          setSheetState(() {
+                            locationController.text = address;
+                            selectedLat = lat;
+                            selectedLng = lng;
+                          });
+                        },
                       ),
                       const SizedBox(height: 24),
                       SizedBox(
@@ -781,6 +791,10 @@ class _ProfilePageState extends State<ProfilePage> {
                                       }
                                       if (newLocation.isNotEmpty) {
                                         updateData['location'] = newLocation;
+                                        if (selectedLat != null && selectedLng != null) {
+                                          updateData['latitude'] = selectedLat;
+                                          updateData['longitude'] = selectedLng;
+                                        }
                                       }
                                       await _db
                                           .collection('customers')

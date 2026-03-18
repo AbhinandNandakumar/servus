@@ -64,16 +64,20 @@ class LocationService {
   /// Get address from coordinates using Google Geocoding API
   Future<String?> getAddressFromCoordinates(double lat, double lng) async {
     try {
+      // Using Nominatim (OpenStreetMap) - free reverse geocoding, no billing required
       final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/geocode/json?latlng=$lat,$lng&key=$_apiKey',
+        'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lng&format=json',
       );
 
-      final response = await http.get(url);
+      final response = await http.get(url, headers: {
+        'User-Agent': 'ServusApp/1.0',
+        'Accept-Language': 'en',
+      });
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data['status'] == 'OK' && data['results'].isNotEmpty) {
-          return data['results'][0]['formatted_address'];
+        if (data['display_name'] != null) {
+          return data['display_name'] as String;
         }
       }
       return null;
